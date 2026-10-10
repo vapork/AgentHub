@@ -6,11 +6,18 @@
   const btnSpawn = document.getElementById('btn-spawn');
   const btnStop = document.getElementById('btn-stop');
   const btnClear = document.getElementById('btn-clear');
+  const btnSettings = document.getElementById('btn-settings');
+  const btnOrchestrator = document.getElementById('btn-orchestrator');
   const inputForm = document.getElementById('input-form');
   const commandInput = document.getElementById('command-input');
   const quickActionBtns = document.querySelectorAll('.quick-actions button');
+  const settingsModal = document.getElementById('settings-modal');
+  const apiKeyInput = document.getElementById('api-key-input');
+  const btnSettingsCancel = document.getElementById('btn-settings-cancel');
+  const btnSettingsSave = document.getElementById('btn-settings-save');
 
   let ws = null;
+  let orchestratorMode = false;
 
   function appendOutput(text) {
     terminal.textContent += text;
@@ -103,6 +110,31 @@
       const parsed = raw.replace('\\n', '\n').replace('\\x03', '\x03');
       sendWs({ type: 'input', data: parsed });
     });
+  });
+
+  // Settings modal handlers
+  btnSettings.addEventListener('click', () => {
+    settingsModal.style.display = 'flex';
+    apiKeyInput.focus();
+  });
+
+  btnSettingsCancel.addEventListener('click', () => {
+    settingsModal.style.display = 'none';
+    apiKeyInput.value = '';
+  });
+
+  btnSettingsSave.addEventListener('click', () => {
+    const key = apiKeyInput.value.trim();
+    sendWs({ type: 'set-api-key', key });
+    settingsModal.style.display = 'none';
+    apiKeyInput.value = '';
+  });
+
+  // Orchestrator Mode toggle
+  btnOrchestrator.addEventListener('click', () => {
+    orchestratorMode = !orchestratorMode;
+    btnOrchestrator.classList.toggle('active', orchestratorMode);
+    appendOutput(`[AgentHub] Orchestrator Mode ${orchestratorMode ? 'enabled' : 'disabled'}\n`);
   });
 
   connect();

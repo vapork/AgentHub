@@ -8,8 +8,40 @@ const localtunnel = require('localtunnel');
 const PORT = process.env.PORT || 3000;
 const app = express();
 
+// Global variable to store the OpenAI API key (set via Settings modal)
+let openaiApiKey = process.env.OPENAI_API_KEY || '';
+
 // Serve static frontend files from public/
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Add OpenAI-compatible proxy endpoint
+app.post('/v1/chat/completions', express.json(), async (req, res) => {
+  if (!openaiApiKey) {
+    return res.status(401).json({ error: 'OpenAI API key not configured. Please set it in Settings.' });
+  }
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiApiKey}`
+      },
+      body: JSON.stringify(req.body)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      return res.status(response.status).json(errorData);
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error('Proxy error:', err);
+    res.status(500).json({ error: 'Internal proxy error' });
+  }
+});
 
 // Create HTTP server
 const server = http.createServer(app);
@@ -42,11 +74,18 @@ wss.on('connection', (ws) => {
 
     const cmdToRun = (commandStr && commandStr.trim()) || (process.platform === 'win32' ? (process.env.COMSPEC || 'cmd.exe') : (process.env.SHELL || '/bin/sh'));
 
+    // Inject environment variables for the proxy
+    const env = {
+      ...process.env,
+      OPENAI_API_BASE: 'http://localhost:3000/v1',
+      OPENAI_API_KEY: 'agenthub-dummy'
+    };
+
     try {
       runningProcess = spawn(cmdToRun, {
         shell: true,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: process.env
+        env
       });
 
       send({ type: 'status', status: 'running', message: `Started: ${cmdToRun}` });
@@ -87,6 +126,10 @@ wss.on('connection', (ws) => {
       } else if (msg.type === 'kill') {
         killCurrentProcess();
         send({ type: 'status', status: 'stopped', message: 'Process terminated by user' });
+      } else if (msg.type === 'set-api-key') {
+        // Update the global API key from the Settings modal
+        openaiApiKey = msg.key || '';
+        send({ type: 'status', status: 'stopped', message: `API key ${openaiApiKey ? 'set' : 'cleared'}` });
       }
     } catch (err) {
       send({ type: 'error', message: `Invalid message format: ${err.message}` });
