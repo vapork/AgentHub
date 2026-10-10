@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AgentHub - Remote Control</title>
+  <style>
+    :root {
+      --bg: #121317;
+      --card-bg: #1a1b23;
+      --text: #e2e8f0;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --danger: #ef4444;
+      --term-bg: #0d0e12;
+      --term-text: #a3e635;
+      --border: #2d3748;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      overflow: hidden;
+    }
+    header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      background: #374151;
+      color: #9ca3af;
+      font-weight: 500;
+    }
+    .badge.connected {
+      background: #065f46;
+      color: #6ee7b7;
+    }
+    .badge.running {
+      background: #1e3a8a;
+      color: #93c5fd;
+    }
+    .toolbar {
+      background: var(--card-bg);
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .toolbar button, .toolbar select {
+      background: #282c37;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .toolbar button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .toolbar button.danger {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #fff;
+    }
+    #terminal-container {
+      flex: 1;
+      background: var(--term-bg);
+      padding: 12px;
+      overflow-y: auto;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: var(--term-text);
+      line-height: 1.4;
+    }
+    .quick-actions {
+      display: flex;
+      background: var(--card-bg);
+      border-top: 1px solid var(--border);
+      padding: 6px 10px;
+      gap: 8px;
+    }
+    .quick-actions button {
+      background: #2a2e3d;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    footer {
+      background: var(--card-bg);
+      border-top: 1px solid var(--border);
+      padding: 8px 10px;
+      display: flex;
+      gap: 8px;
+    }
+    #input-form {
+      display: flex;
+      width: 100%;
+      gap: 8px;
+    }
+    #command-input {
+      flex: 1;
+      background: #111317;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 1rem;
+      outline: none;
+    }
+    #command-input:focus {
+      border-color: var(--accent);
+    }
+    #send-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AgentHub</h1>
+    <div>
+      <span id="ws-badge" class="badge">Connecting...</span>
+      <span id="proc-badge" class="badge">Idle</span>
+    </div>
+  </header>
+
+  <section class="toolbar">
+    <select id="agent-select">
+      <option value="aider">aider</option>
+      <option value="agy">agy</option>
+      <option value="bash">bash</option>
+      <option value="cmd">cmd.exe</option>
+    </select>
+    <button class="primary" id="btn-spawn">Start Agent</button>
+    <button class="danger" id="btn-stop">Stop</button>
+    <button id="btn-clear">Clear</button>
+  </section>
+
+  <main id="terminal-container"></main>
+
+  <section class="quick-actions">
+    <button type="button" data-key="y\n">Y (Enter)</button>
+    <button type="button" data-key="n\n">N (Enter)</button>
+    <button type="button" data-key="\x03">Ctrl+C</button>
+    <button type="button" data-key="\n">Enter</button>
+  </section>
+
+  <footer>
+    <form id="input-form">
+      <input type="text" id="command-input" placeholder="Type prompt or response (e.g. y/n)..." autocomplete="off" autocapitalize="none" />
+      <button type="submit" id="send-btn">Send</button>
+    </form>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
