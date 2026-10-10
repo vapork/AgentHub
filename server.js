@@ -103,7 +103,7 @@ server.listen(PORT, async () => {
   console.log(`Local server listening on http://localhost:${PORT}`);
 
   try {
-    const tunnel = await localtunnel({ port: PORT });
+    const tunnel = await localtunnel({ port: PORT, subdomain: 'agenthub' });
     console.log(`👉 Access AgentHub at: ${tunnel.url}`);
 
     tunnel.on('close', () => {
