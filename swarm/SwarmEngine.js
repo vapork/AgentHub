@@ -56,7 +56,7 @@ class SwarmEngine extends EventEmitter {
         name: 'Evaluator / Critic',
         icon: '⚖️',
         role: 'Closed-Loop Evaluator-Optimizer & Test Analysis',
-        model: 'nemotron-3.5-lightning',
+        model: 'agent-qa-engineer',
         status: 'idle',
         currentTask: null,
         thread: [],
@@ -172,7 +172,7 @@ Respond ONLY in valid JSON array format, like:
     ];
 
     try {
-      const res = await this.llm.chatCompletion({ model: 'gemini-3.8-flash', messages: prompt });
+      const res = await this.llm.chatCompletion({ model: 'swarm-master', messages: prompt });
       let parsedTasks = [];
 
       try {
@@ -257,7 +257,7 @@ Evaluate if this requires adjusting existing tasks or pivoting priorities. Respo
         { role: 'user', content: message },
       ];
 
-      const res = await this.llm.chatCompletion({ model: 'gemini-3.8-flash', messages: prompt });
+      const res = await this.llm.chatCompletion({ model: 'swarm-master', messages: prompt });
       this.manager.thread.push({ role: 'agent', content: res.content, timestamp: Date.now() });
       this.manager.currentThought = res.content.slice(0, 140) + '...';
       this.manager.decisions.push({ timestamp: Date.now(), decision: `Incorporated operator directive: ${message}` });

@@ -6,9 +6,9 @@
 
 class LiteLLMClient {
   constructor(options = {}) {
-    this.apiBase = options.apiBase || process.env.LITELLM_API_BASE || 'http://localhost:4000/v1';
-    this.apiKey = options.apiKey || process.env.OPENAI_API_KEY || 'sk-litellm-dummy';
-    this.defaultModel = options.defaultModel || 'gemini-3.8-flash';
+    this.apiBase = options.apiBase || process.env.LITELLM_API_BASE || 'http://localhost:5588/v1';
+    this.apiKey = options.apiKey || process.env.OPENAI_API_KEY || 'dummy';
+    this.defaultModel = options.defaultModel || 'swarm-master';
   }
 
   async chatCompletion({ model, messages, temperature = 0.2, maxTokens = 2048 }) {
