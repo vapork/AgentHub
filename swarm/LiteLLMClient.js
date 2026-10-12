@@ -11,7 +11,7 @@ class LiteLLMClient {
     this.defaultModel = options.defaultModel || 'swarm-master';
   }
 
-  async chatCompletion({ model, messages, temperature = 0.2, maxTokens = 2048 }) {
+  async chatCompletion({ model, messages, temperature = 0.2, maxTokens = 8192 }) {
     const targetModel = model || this.defaultModel;
     const url = `${this.apiBase.replace(/\/+$/, '')}/chat/completions`;
 

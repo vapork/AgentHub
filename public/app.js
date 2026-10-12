@@ -837,19 +837,92 @@ function renderWorkspaceFeed() {
     `;
     workspaceFeed.appendChild(infoCard);
 
-    // If Evaluator: show scorecard
-    if (selectedAgentId === 'evaluator' && sub.evaluations && sub.evaluations.length > 0) {
+    // Active Live Reasoning Indicator
+    if (sub.status === 'reasoning') {
+      const activeCard = document.createElement('div');
+      activeCard.className = 'agent-active-reasoning-card';
+      activeCard.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="pulse-indicator"></span>
+            <strong style="color:#38bdf8; font-size:0.9rem;">Actively Reasoning & Synthesizing Deliverable</strong>
+          </div>
+          <span class="agent-status-badge status-reasoning" style="font-size:0.65rem;">LIVE GENERATION</span>
+        </div>
+        <div style="margin-top:6px; font-size:0.8rem; color:#cbd5e1;">
+          Task: <strong>${sub.currentTask || 'Executing assigned sprint objective'}</strong>
+        </div>
+        <div style="margin-top:3px; font-size:0.75rem; color:#94a3b8;">
+          Routing: <code style="color:var(--accent);">${sub.model}</code> via LiteLLM Proxy (Port 5588) • <em>Local GPU: 0% idle</em>
+        </div>
+        <div class="thinking-bar-container">
+          <div class="thinking-bar-fill"></div>
+        </div>
+        <div style="font-size:0.75rem; color:#64748b; margin-top:6px;">
+          The agent is generating specifications and code. Deliverable will appear directly below as soon as complete synthesis is finished.
+        </div>
+      `;
+      workspaceFeed.appendChild(activeCard);
+    } else if (sub.status === 'evaluating') {
+      const activeEvalCard = document.createElement('div');
+      activeEvalCard.className = 'agent-active-eval-card';
+      activeEvalCard.innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="pulse-indicator-eval"></span>
+          <strong style="color:#a855f7; font-size:0.9rem;">⚖️ Evaluator-Optimizer Audit In Progress</strong>
+        </div>
+        <div style="margin-top:4px; font-size:0.8rem; color:#cbd5e1;">
+          Auditing deliverable against acceptance criteria with <code>agent-qa-engineer</code>...
+        </div>
+        <div class="thinking-bar-container">
+          <div class="thinking-bar-fill" style="background:linear-gradient(90deg, #a855f7, #ec4899);"></div>
+        </div>
+      `;
+      workspaceFeed.appendChild(activeEvalCard);
+    }
+
+    // Escalation / Retry Alert if Task Failed
+    const failedTask = localSwarmState.tasks?.find(t => t.assignedTo === selectedAgentId && t.status === 'failed');
+    if (sub.status === 'error' || failedTask) {
+      const errorCard = document.createElement('div');
+      errorCard.className = 'agent-active-error-card';
+      errorCard.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <strong style="color:#ef4444; font-size:0.85rem;">⚠️ Max Retries Reached (${localSwarmState.maxRetries || 3}/${localSwarmState.maxRetries || 3})</strong>
+          ${failedTask ? `<button class="swarm-btn primary btn-sub-retry" data-id="${failedTask.id}" style="padding:4px 10px; font-size:0.75rem;">🔄 Retry Task (8K Token Budget)</button>` : ''}
+        </div>
+        <div style="font-size:0.78rem; color:#cbd5e1; margin-top:4px;">
+          Task output was previously rejected by Evaluator due to output truncation (token limit). Token budget has been upgraded to 8K. Click retry to run again.
+        </div>
+      `;
+      const retryBtn = errorCard.querySelector('.btn-sub-retry');
+      if (retryBtn) {
+        retryBtn.addEventListener('click', () => {
+          sendWs({ type: 'swarm-execute-task', taskId: retryBtn.dataset.id });
+        });
+      }
+      workspaceFeed.appendChild(errorCard);
+    }
+
+    // Evaluator Quality Audits relevant to this agent
+    const relevantEvals = (localSwarmState.subagents?.evaluator?.evaluations || []).filter(ev => {
+      if (selectedAgentId === 'evaluator') return true;
+      const t = localSwarmState.tasks?.find(tsk => tsk.id === ev.taskId);
+      return t && t.assignedTo === selectedAgentId;
+    });
+
+    if (relevantEvals.length > 0) {
       const evalSection = document.createElement('div');
-      evalSection.innerHTML = `<h3 style="font-size:0.9rem; color:#fff; margin-top:10px; margin-bottom:6px;">⚖️ Evaluator-Optimizer Scorecards</h3>`;
-      sub.evaluations.slice(-5).reverse().forEach(ev => {
+      evalSection.innerHTML = `<h3 style="font-size:0.9rem; color:#fff; margin-top:10px; margin-bottom:6px;">⚖️ Evaluator Quality Audits (${relevantEvals.length})</h3>`;
+      relevantEvals.slice(-5).reverse().forEach(ev => {
         const sc = document.createElement('div');
         sc.style.cssText = `background:#15171e; border:1px solid ${ev.passed ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)'}; border-radius:8px; padding:8px 10px; font-size:0.8rem; margin-bottom:6px;`;
         sc.innerHTML = `
-          <div style="display:flex; justify-content:space-between;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
             <span style="font-weight:700; color:${ev.passed ? '#10b981' : '#ef4444'};">${ev.passed ? 'PASSED ✓' : 'REJECTED ✗'} (Score: ${ev.score}/100)</span>
-            <span style="font-size:0.7rem; color:#64748b;">${new Date(ev.timestamp).toLocaleTimeString()}</span>
+            <span style="font-size:0.7rem; color:#64748b;">${new Date(ev.timestamp).toLocaleTimeString()} • ${ev.taskId}</span>
           </div>
-          <div style="color:#cbd5e1; margin-top:4px;">${ev.diagnosticFeedback}</div>
+          <div style="color:#cbd5e1; margin-top:4px; font-size:0.78rem;">${ev.diagnosticFeedback}</div>
         `;
         evalSection.appendChild(sc);
       });
@@ -859,15 +932,22 @@ function renderWorkspaceFeed() {
     // Subagent Thread
     if (sub.thread && sub.thread.length > 0) {
       const threadSection = document.createElement('div');
-      threadSection.innerHTML = `<h3 style="font-size:0.9rem; color:#fff; margin-top:10px; margin-bottom:6px;">💬 Agent Activity & Output Stream</h3>`;
-      sub.thread.forEach(msg => {
+      threadSection.innerHTML = `<h3 style="font-size:0.9rem; color:#fff; margin-top:10px; margin-bottom:6px;">💬 Agent Deliverable History (${sub.thread.length})</h3>`;
+      sub.thread.forEach((msg, idx) => {
         const bubble = document.createElement('div');
         bubble.className = `chat-bubble ${msg.role === 'user' ? 'user' : 'agent'}`;
-        bubble.innerHTML = `<div style="font-size:0.7rem; opacity:0.7; margin-bottom:2px;">${msg.role === 'user' ? 'Operator Directive' : sub.name}</div><div style="white-space:pre-wrap; font-family:monospace; font-size:0.85rem;">${msg.content}</div>`;
+        const attemptLabel = msg.taskId ? ` • Attempt ${idx + 1}` : '';
+        bubble.innerHTML = `
+          <div style="font-size:0.7rem; opacity:0.7; margin-bottom:2px; display:flex; justify-content:space-between;">
+            <span>${msg.role === 'user' ? 'Operator Directive' : sub.name + attemptLabel}</span>
+            <span>${msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}</span>
+          </div>
+          <div style="white-space:pre-wrap; font-family:monospace; font-size:0.85rem; max-height:400px; overflow-y:auto; background:#121317; padding:8px; border-radius:6px; margin-top:4px;">${msg.content}</div>
+        `;
         threadSection.appendChild(bubble);
       });
       workspaceFeed.appendChild(threadSection);
-    } else {
+    } else if (sub.status !== 'reasoning') {
       const empty = document.createElement('div');
       empty.style.cssText = 'color:#64748b; font-size:0.85rem; padding:16px; text-align:center; font-style:italic;';
       empty.textContent = `No messages or outputs for ${sub.name} yet. Direct an instruction below to steer this subagent.`;

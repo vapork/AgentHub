@@ -310,10 +310,13 @@ Acknowledge the instruction and explain how you will adapt your work. Keep respo
 
     const agent = this.subagents[task.assignedTo] || this.subagents.coder;
     this.currentTaskId = taskId;
+    if (task.status === 'failed') {
+      task.attempts = 0;
+    }
     task.status = 'in_progress';
     task.attempts = (task.attempts || 0) + 1;
     agent.status = 'reasoning';
-    agent.currentTask = task.title;
+    agent.currentTask = `${task.title} (Attempt ${task.attempts}/${this.maxRetries})`;
 
     this.manager.status = 'delegating';
     this.manager.currentThought = `Overseeing ${agent.name} executing "${task.title}" (Attempt ${task.attempts}/${this.maxRetries})...`;
@@ -328,12 +331,12 @@ Title: ${task.title}
 Instructions: ${task.description}
 Acceptance Criteria: ${task.acceptanceCriteria}
 Previous Errors: ${JSON.stringify(task.errorHistory || [])}
-Provide your technical solution, code modifications, or architectural specifications.`,
+Provide your technical solution, code modifications, or architectural specifications. Ensure your output is comprehensive, well-structured, and that all sections and tables are completely finished and concluded without truncation.`,
       },
       { role: 'user', content: `Execute task: ${task.title}` },
     ];
 
-    const execResult = await this.llm.chatCompletion({ model: agent.model, messages: prompt });
+    const execResult = await this.llm.chatCompletion({ model: agent.model, messages: prompt, maxTokens: 8192 });
     agent.thread.push({
       role: 'agent',
       content: execResult.content,
