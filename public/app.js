@@ -195,8 +195,11 @@
     { id: 'manager', label: '@Manager 👑', placeholder: 'Instruct @Manager (Antigravity)...' },
     { id: 'architect', label: '@Architect 📐', placeholder: 'Steer @Architect on system design...' },
     { id: 'coder', label: '@Coder 💻', placeholder: 'Guide @Master Coder on implementation...' },
-    { id: 'evaluator', label: '@Evaluator ⚖️', placeholder: 'Ask @Evaluator about quality/tests...' },
-    { id: 'tester', label: '@Tester 🧪', placeholder: 'Direct @Test Runner on test suites...' },
+    { id: 'code_monkey', label: '@CodeMonkey 🐒', placeholder: 'Ask @Code Monkey for rapid scripts & prototypes...' },
+    { id: 'db', label: '@DB 💾', placeholder: 'Steer @Database Engineer on Postgres schemas & queries...' },
+    { id: 'pm', label: '@PM 📋', placeholder: 'Consult @Project Manager on user stories & sprint backlog...' },
+    { id: 'evaluator', label: '@Evaluator ⚖️', placeholder: 'Ask @Evaluator about quality audits & acceptance gates...' },
+    { id: 'tester', label: '@Tester 🧪', placeholder: 'Direct @Test Runner on automated test suites...' },
   ];
 
   function setSteeringTarget(targetId) {
@@ -811,11 +814,18 @@ function renderSwarmTabs() {
   if (!swarmTabsContainer) return;
   const tabs = [
     { id: 'manager', label: '👑 Manager', icon: '👑', status: localSwarmState?.manager?.status },
-    { id: 'architect', label: '📐 Architect', icon: '📐', status: localSwarmState?.subagents?.architect?.status },
-    { id: 'coder', label: '💻 Master Coder', icon: '💻', status: localSwarmState?.subagents?.coder?.status },
-    { id: 'evaluator', label: '⚖️ Evaluator', icon: '⚖️', status: localSwarmState?.subagents?.evaluator?.status },
-    { id: 'tester', label: '🧪 Test Runner', icon: '🧪', status: localSwarmState?.subagents?.tester?.status },
   ];
+
+  if (localSwarmState?.subagents) {
+    for (const [key, sub] of Object.entries(localSwarmState.subagents)) {
+      tabs.push({
+        id: key,
+        label: `${sub.icon || '🤖'} ${sub.name}`,
+        icon: sub.icon || '🤖',
+        status: sub.status || 'idle',
+      });
+    }
+  }
 
   swarmTabsContainer.innerHTML = '';
   tabs.forEach(t => {

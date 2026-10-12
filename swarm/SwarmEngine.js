@@ -32,7 +32,7 @@ class SwarmEngine extends EventEmitter {
       thread: [],
     };
 
-    // Subagents registry
+    // Subagents registry (Reflecting full roster in litellm_config.yaml)
     this.subagents = {
       architect: {
         id: 'architect',
@@ -51,6 +51,39 @@ class SwarmEngine extends EventEmitter {
         icon: '💻',
         role: 'High-Velocity Code Generation & Refactoring',
         model: 'swarm-master',
+        status: 'idle',
+        currentTask: null,
+        thread: [],
+        diffs: [],
+      },
+      code_monkey: {
+        id: 'code_monkey',
+        name: 'Rapid Code Monkey',
+        icon: '🐒',
+        role: 'Instant Scratch Scripting & Rapid Prototyping',
+        model: 'agent-code-monkey',
+        status: 'idle',
+        currentTask: null,
+        thread: [],
+        diffs: [],
+      },
+      db: {
+        id: 'db',
+        name: 'Database Engineer',
+        icon: '💾',
+        role: 'Postgres Schemas, Migrations & Query Optimization',
+        model: 'agent-db-engineer',
+        status: 'idle',
+        currentTask: null,
+        thread: [],
+        diffs: [],
+      },
+      pm: {
+        id: 'pm',
+        name: 'Project Manager',
+        icon: '📋',
+        role: 'Sprint Planning, User Stories & Backlog Grooming',
+        model: 'agent-project-manager',
         status: 'idle',
         currentTask: null,
         thread: [],
@@ -281,7 +314,8 @@ class SwarmEngine extends EventEmitter {
 Decompose the following user goal into 3-5 structured, concrete engineering tasks.
 For each task specify:
 - title: concise task title
-- assignedTo: 'architect' | 'coder' | 'evaluator'
+- assignedTo: 'architect' | 'coder' | 'code_monkey' | 'db' | 'pm' | 'evaluator' | 'tester'
+  (Roles: 'architect'=System Design/Contracts, 'coder'=Master Coder/Components, 'code_monkey'=Rapid Scripting, 'db'=Database/Migrations, 'pm'=Product/Sprint Backlog, 'evaluator'=QA Audit, 'tester'=Test Runner)
 - description: specific implementation instructions
 - acceptanceCriteria: verifiable pass condition
 Respond ONLY in valid JSON array format, like:

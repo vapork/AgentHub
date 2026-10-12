@@ -109,6 +109,39 @@
         "currentTask": null,
         "thread": [],
         "testRuns": []
+      },
+      "code_monkey": {
+        "id": "code_monkey",
+        "name": "Rapid Code Monkey",
+        "icon": "🐒",
+        "role": "Instant Scratch Scripting & Rapid Prototyping",
+        "model": "agent-code-monkey",
+        "status": "idle",
+        "currentTask": null,
+        "thread": [],
+        "diffs": []
+      },
+      "db": {
+        "id": "db",
+        "name": "Database Engineer",
+        "icon": "💾",
+        "role": "Postgres Schemas, Migrations & Query Optimization",
+        "model": "agent-db-engineer",
+        "status": "idle",
+        "currentTask": null,
+        "thread": [],
+        "diffs": []
+      },
+      "pm": {
+        "id": "pm",
+        "name": "Project Manager",
+        "icon": "📋",
+        "role": "Sprint Planning, User Stories & Backlog Grooming",
+        "model": "agent-project-manager",
+        "status": "idle",
+        "currentTask": null,
+        "thread": [],
+        "diffs": []
       }
     },
     "tasks": [
