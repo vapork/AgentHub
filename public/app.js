@@ -30,6 +30,93 @@
     }
   }
   loadModels();
+
+  function convertTableToHtml(rows) {
+    if (!rows || rows.length < 2) return (rows || []).join('\n');
+    let html = '<table>';
+    let isHeader = true;
+
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r].trim();
+      if (/^\|(\s*[:?-]+-+\s*\|)+$/.test(row)) {
+        isHeader = false;
+        continue;
+      }
+      const cells = row.split('|').slice(1, -1);
+      html += '<tr>';
+      cells.forEach(c => {
+        const tag = isHeader ? 'th' : 'td';
+        let cellText = c.trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        html += `<${tag}>${cellText}</${tag}>`;
+      });
+      html += '</tr>';
+    }
+    html += '</table>';
+    return html;
+  }
+
+  function renderMarkdown(md) {
+    if (!md) return '';
+    let text = md.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+
+    const codeBlocks = [];
+    text = text.replace(/```([a-z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+      const idx = codeBlocks.length;
+      const safeCode = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      codeBlocks.push(`<pre><code class="lang-${lang}">${safeCode}</code></pre>`);
+      return `%%CODEBLOCK_${idx}%%`;
+    });
+
+    text = text.replace(/`([^`]+)`/g, (match, code) => {
+      const safe = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return `<code>${safe}</code>`;
+    });
+
+    const lines = text.split('\n');
+    let inTable = false;
+    let tableRows = [];
+    let processed = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i].trim();
+      if (l.startsWith('|') && l.endsWith('|')) {
+        if (!inTable) {
+          inTable = true;
+          tableRows = [];
+        }
+        tableRows.push(l);
+      } else {
+        if (inTable) {
+          processed.push(convertTableToHtml(tableRows));
+          inTable = false;
+          tableRows = [];
+        }
+        processed.push(lines[i]);
+      }
+    }
+    if (inTable) {
+      processed.push(convertTableToHtml(tableRows));
+    }
+    text = processed.join('\n');
+
+    text = text.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+    text = text.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+    text = text.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+    text = text.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+    text = text.replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>');
+    text = text.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    text = text.replace(/^---$/gim, '<hr style="border:none; border-top:1px solid #334155; margin:14px 0;">');
+    text = text.replace(/^[*-] (.*$)/gim, '<li>$1</li>');
+
+    text = text.replace(/%%CODEBLOCK_(\d+)%%/g, (match, idx) => {
+      return codeBlocks[parseInt(idx)] || '';
+    });
+
+    text = text.replace(/\n\n/g, '<br/><br/>');
+    return text;
+  }
   
   const titleBtn = document.getElementById('title-btn');
   const terminal = document.getElementById('terminal-container');
@@ -135,8 +222,13 @@
     if (terminal) terminal.style.display = mode === 'terminal' ? 'block' : 'none';
     if (chatContainer) chatContainer.style.display = mode === 'chat' ? 'flex' : 'none';
 
+    const quickActionsEl = document.querySelector('.quick-actions');
+    if (quickActionsEl) {
+      quickActionsEl.style.display = mode === 'terminal' ? 'flex' : 'none';
+    }
+
     btnViewToggle.textContent = mode === 'swarm' ? 'Swarm View (Active)' : (mode === 'terminal' ? 'Terminal View' : 'Chat View');
-    btnViewToggle.classList.toggle('active', mode !== 'terminal');
+    btnViewToggle.classList.toggle('active', mode === 'swarm');
 
     if (mode === 'terminal') {
       setTimeout(() => fitAddon.fit(), 50);
@@ -761,13 +853,67 @@ function renderSwarmUI() {
     btnSwarmRun.disabled = localSwarmState.isRunning;
   }
 
-  // 3. Manager Status Card
+  // 3. Manager Status Card & Directive Stream
+  const managerActionBanner = document.getElementById('manager-action-banner');
+  const managerActionText = document.getElementById('manager-action-text');
+  const btnManagerAction = document.getElementById('btn-manager-action');
+
   if (managerStatusBadge && localSwarmState.manager) {
-    managerStatusBadge.textContent = localSwarmState.manager.status;
-    managerStatusBadge.className = `agent-status-badge status-${localSwarmState.manager.status}`;
+    const isRunning = localSwarmState.isRunning;
+    const readyTask = localSwarmState.tasks?.find(t => t.status === 'ready' || t.status === 'in_progress');
+    const allDone = localSwarmState.tasks?.length > 0 && localSwarmState.tasks.every(t => t.status === 'verified');
+
+    if (isRunning) {
+      managerStatusBadge.textContent = 'RUNNING';
+      managerStatusBadge.className = 'agent-status-badge status-in_progress';
+    } else if (readyTask) {
+      managerStatusBadge.textContent = 'TASK READY';
+      managerStatusBadge.className = 'agent-status-badge status-planning';
+    } else if (allDone) {
+      managerStatusBadge.textContent = 'SPRINT VERIFIED ✓';
+      managerStatusBadge.className = 'agent-status-badge status-verified';
+    } else {
+      managerStatusBadge.textContent = 'READY';
+      managerStatusBadge.className = 'agent-status-badge status-idle';
+    }
   }
+
   if (managerThoughtText && localSwarmState.manager) {
-    managerThoughtText.textContent = localSwarmState.manager.currentThought;
+    managerThoughtText.innerHTML = `<strong>Manager Rationale:</strong> ${localSwarmState.manager.currentThought || 'Standing by for project goals or operator instructions.'}`;
+  }
+
+  // Manager Next-Action Banner (One-click guidance)
+  if (managerActionBanner && localSwarmState.tasks) {
+    const nextTask = localSwarmState.tasks.find(t => t.status === 'ready');
+    const inProgTask = localSwarmState.tasks.find(t => t.status === 'in_progress');
+    const allDone = localSwarmState.tasks.length > 0 && localSwarmState.tasks.every(t => t.status === 'verified');
+
+    if (inProgTask) {
+      managerActionBanner.style.display = 'flex';
+      managerActionText.innerHTML = `⚡ <strong>In Progress:</strong> ${inProgTask.title} (@${inProgTask.assignedTo})`;
+      if (btnManagerAction) {
+        btnManagerAction.textContent = 'Inspect Tab';
+        btnManagerAction.onclick = () => selectAgent(inProgTask.assignedTo);
+      }
+    } else if (nextTask) {
+      managerActionBanner.style.display = 'flex';
+      managerActionText.innerHTML = `👉 <strong>Next Up:</strong> ${nextTask.title} (Assigned: @${nextTask.assignedTo})`;
+      if (btnManagerAction) {
+        btnManagerAction.textContent = `▶ Run ${nextTask.id}`;
+        btnManagerAction.onclick = () => sendWs({ type: 'swarm-execute-task', taskId: nextTask.id });
+      }
+    } else if (allDone) {
+      managerActionBanner.style.display = 'flex';
+      managerActionText.innerHTML = `🎉 <strong>Sprint Complete:</strong> All ${localSwarmState.tasks.length} tasks verified against acceptance gates!`;
+      if (btnManagerAction) {
+        btnManagerAction.textContent = '🎯 Next Sprint Goal';
+        btnManagerAction.onclick = () => {
+          if (btnSwarmNewGoal) btnSwarmNewGoal.click();
+        };
+      }
+    } else {
+      managerActionBanner.style.display = 'none';
+    }
   }
 
   // 4. Tabs & Workspace
@@ -973,22 +1119,43 @@ function renderWorkspaceFeed() {
       workspaceFeed.appendChild(evalSection);
     }
 
-    // Subagent Thread
+    // Subagent Thread / Deliverables
     if (sub.thread && sub.thread.length > 0) {
       const threadSection = document.createElement('div');
-      threadSection.innerHTML = `<h3 style="font-size:0.9rem; color:#fff; margin-top:10px; margin-bottom:6px;">💬 Agent Deliverable History (${sub.thread.length})</h3>`;
+      threadSection.innerHTML = `<h3 style="font-size:0.9rem; color:#fff; margin-top:10px; margin-bottom:8px;">📄 Verified Deliverables & Activity (${sub.thread.length})</h3>`;
       sub.thread.forEach((msg, idx) => {
-        const bubble = document.createElement('div');
-        bubble.className = `chat-bubble ${msg.role === 'user' ? 'user' : 'agent'}`;
-        const attemptLabel = msg.taskId ? ` • Attempt ${idx + 1}` : '';
-        bubble.innerHTML = `
-          <div style="font-size:0.7rem; opacity:0.7; margin-bottom:2px; display:flex; justify-content:space-between;">
-            <span>${msg.role === 'user' ? 'Operator Directive' : sub.name + attemptLabel}</span>
-            <span>${msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}</span>
-          </div>
-          <div style="white-space:pre-wrap; font-family:monospace; font-size:0.85rem; max-height:400px; overflow-y:auto; background:#121317; padding:8px; border-radius:6px; margin-top:4px;">${msg.content}</div>
-        `;
-        threadSection.appendChild(bubble);
+        if (msg.role === 'user') {
+          const userCard = document.createElement('div');
+          userCard.className = 'operator-directive-card';
+          userCard.innerHTML = `
+            <div style="font-size:0.75rem; font-weight:700; color:#38bdf8; display:flex; justify-content:space-between;">
+              <span>👤 Operator Steering Directive</span>
+              <span style="font-size:0.68rem; color:#64748b;">${msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}</span>
+            </div>
+            <div style="font-size:0.85rem; color:#e2e8f0; margin-top:4px;">${msg.content}</div>
+          `;
+          threadSection.appendChild(userCard);
+        } else {
+          const delCard = document.createElement('div');
+          delCard.className = 'deliverable-card';
+          const attemptLabel = msg.taskId ? ` • Attempt ${idx + 1}` : '';
+          delCard.innerHTML = `
+            <div class="deliverable-header">
+              <div class="deliverable-title">
+                <span>📄</span>
+                <span>${sub.name}${attemptLabel}</span>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <span style="font-size:0.7rem; color:#64748b;">${msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}</span>
+                <span class="agent-status-badge status-verified" style="font-size:0.6rem;">OUTPUT READY</span>
+              </div>
+            </div>
+            <div class="deliverable-body">
+              ${renderMarkdown(msg.content)}
+            </div>
+          `;
+          threadSection.appendChild(delCard);
+        }
       });
       workspaceFeed.appendChild(threadSection);
     } else if (sub.status !== 'reasoning') {
