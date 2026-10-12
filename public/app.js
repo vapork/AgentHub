@@ -799,6 +799,12 @@ function selectAgent(agentId) {
   setSteeringTarget(agentId);
   renderSwarmTabs();
   renderWorkspaceFeed();
+  if (swarmTabsContainer) {
+    const activeTab = swarmTabsContainer.querySelector(`.swarm-tab[data-agent="${agentId}"]`);
+    if (activeTab && activeTab.scrollIntoView) {
+      activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }
 }
 
 function renderSwarmTabs() {

@@ -16,8 +16,16 @@ const app = express();
 // Global variable to store the OpenAI API key (set via Settings modal)
 let openaiApiKey = process.env.OPENAI_API_KEY || '';
 
-// Serve static frontend files from public/
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static frontend files from public/ with fresh cache controls for mobile
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  }
+}));
 
 // Add OpenAI-compatible proxy endpoint
 app.post('/v1/chat/completions', express.json(), async (req, res) => {

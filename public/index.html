@@ -481,29 +481,47 @@
       display: flex;
       gap: 8px;
       overflow-x: auto;
-      padding-bottom: 4px;
-      scrollbar-width: thin;
+      -webkit-overflow-scrolling: touch;
+      flex-shrink: 0;
+      padding: 6px 2px;
+      position: sticky;
+      top: 0;
+      z-index: 25;
+      background: var(--bg);
+      scrollbar-width: none;
+    }
+    .swarm-tabs-container::-webkit-scrollbar {
+      display: none;
     }
     .swarm-tab {
-      background: var(--card-bg);
+      flex-shrink: 0;
+      background: #1a1b23;
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 12px;
-      display: flex;
+      border-radius: 9999px;
+      padding: 7px 14px;
+      display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       cursor: pointer;
       white-space: nowrap;
       font-size: 0.85rem;
       font-weight: 600;
       color: #94a3b8;
       transition: all 0.2s;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.25);
+      touch-action: manipulation;
+      user-select: none;
     }
-    .swarm-tab:hover { background: #282c37; color: white; }
+    .swarm-tab:hover {
+      background: #282c37;
+      color: white;
+      border-color: #475569;
+    }
     .swarm-tab.active {
-      background: rgba(59, 130, 246, 0.15);
-      border-color: var(--accent);
-      color: #fff;
+      background: #1d4ed8;
+      border-color: #3b82f6;
+      color: #ffffff;
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
     }
 
     .swarm-workspace-panel {
@@ -747,6 +765,73 @@
     .sidebar-swarm-mode .sidebar-terminal-controls {
       display: none !important;
     }
+
+    /* Mobile First Adjustments for Phone Viewing */
+    @media (max-width: 768px) {
+      #swarm-container {
+        padding: 8px;
+        gap: 10px;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
+      }
+      .swarm-header-card, .manager-card {
+        padding: 10px 12px;
+        flex-shrink: 0;
+      }
+      .swarm-controls-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        width: 100%;
+      }
+      .swarm-btn {
+        width: 100%;
+        padding: 8px 6px;
+        font-size: 0.8rem;
+        text-align: center;
+      }
+      .swarm-workspace-panel {
+        flex: none;
+        min-height: auto;
+        overflow: visible;
+      }
+      .workspace-feed {
+        flex: none;
+        overflow: visible;
+        padding: 8px 0;
+        gap: 8px;
+      }
+      .deliverable-card {
+        padding: 12px;
+        margin-bottom: 10px;
+        width: 100%;
+      }
+      .deliverable-body {
+        max-height: none;
+        overflow: visible;
+        padding-right: 0;
+      }
+      .deliverable-body table {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap;
+      }
+      .deliverable-body pre {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .operator-directive-card {
+        width: 100%;
+      }
+      footer {
+        padding: 8px 10px;
+      }
+      #command-input {
+        font-size: 0.95rem;
+      }
+    }
   </style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
@@ -980,6 +1065,6 @@
     </div>
   </div>
 
-  <script src="/app.js"></script>
+  <script src="/app.js?v=2.2"></script>
 </body>
 </html>
