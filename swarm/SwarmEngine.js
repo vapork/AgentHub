@@ -7,6 +7,11 @@ class SwarmEngine extends EventEmitter {
   constructor(options = {}) {
     super();
     this.storagePath = options.storagePath || path.join(__dirname, '..', 'swarm_sessions.json');
+    this.sessionsDir = options.sessionsDir || path.join(__dirname, '..', 'sessions');
+    if (!fs.existsSync(this.sessionsDir)) {
+      try { fs.mkdirSync(this.sessionsDir, { recursive: true }); } catch {}
+    }
+    this.activeSessionId = options.activeSessionId || null;
     this.llm = options.llmClient || new LiteLLMClient();
     this.maxRetries = options.maxRetries || 3;
     this.autoApprove = options.autoApprove !== undefined ? options.autoApprove : true;
@@ -83,6 +88,7 @@ class SwarmEngine extends EventEmitter {
    * ------------------------------------------------------------------ */
   getState() {
     return {
+      activeSessionId: this.activeSessionId,
       activeGoal: this.activeGoal,
       isRunning: this.isRunning,
       autoApprove: this.autoApprove,
@@ -104,6 +110,19 @@ class SwarmEngine extends EventEmitter {
     try {
       const state = this.getState();
       fs.writeFileSync(this.storagePath, JSON.stringify(state, null, 2), 'utf-8');
+
+      if (this.activeSessionId) {
+        const sessionFile = path.join(this.sessionsDir, `${this.activeSessionId}.json`);
+        const sessionPayload = {
+          id: this.activeSessionId,
+          goal: this.activeGoal || 'Untitled Goal',
+          createdAt: this.createdAt || Date.now(),
+          updatedAt: Date.now(),
+          state,
+        };
+        fs.writeFileSync(sessionFile, JSON.stringify(sessionPayload, null, 2), 'utf-8');
+      }
+
       this.emit('state-saved', state);
     } catch (err) {
       console.error('[SwarmEngine] Failed to save state:', err.message);
@@ -114,6 +133,7 @@ class SwarmEngine extends EventEmitter {
     try {
       if (fs.existsSync(this.storagePath)) {
         const data = JSON.parse(fs.readFileSync(this.storagePath, 'utf-8'));
+        this.activeSessionId = data.activeSessionId || 'sims-sprint-planning';
         if (data.activeGoal) this.activeGoal = data.activeGoal;
         if (Array.isArray(data.tasks)) this.tasks = data.tasks;
         if (data.manager) this.manager = { ...this.manager, ...data.manager };
@@ -124,10 +144,99 @@ class SwarmEngine extends EventEmitter {
             }
           }
         }
+        // Save initial snapshot to sessionsDir if not already there
+        const sessionFile = path.join(this.sessionsDir, `${this.activeSessionId}.json`);
+        if (!fs.existsSync(sessionFile)) {
+          const sessionPayload = {
+            id: this.activeSessionId,
+            goal: this.activeGoal || 'Resume working on SIMS project',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            state: this.getState(),
+          };
+          fs.writeFileSync(sessionFile, JSON.stringify(sessionPayload, null, 2), 'utf-8');
+        }
+      } else {
+        this.activeSessionId = 'sims-sprint-planning';
       }
     } catch (err) {
       console.warn('[SwarmEngine] Initializing fresh state (no previous session):', err.message);
+      this.activeSessionId = 'sims-sprint-planning';
     }
+  }
+
+  listSessions() {
+    try {
+      if (!fs.existsSync(this.sessionsDir)) return [];
+      const files = fs.readdirSync(this.sessionsDir).filter((f) => f.endsWith('.json'));
+      const list = [];
+      for (const f of files) {
+        try {
+          const content = JSON.parse(fs.readFileSync(path.join(this.sessionsDir, f), 'utf-8'));
+          const sState = content.state || content;
+          list.push({
+            id: content.id || f.replace('.json', ''),
+            goal: content.goal || sState.activeGoal || 'Untitled Session',
+            createdAt: content.createdAt || Date.now(),
+            updatedAt: content.updatedAt || Date.now(),
+            totalTasks: sState.stats?.totalTasks || sState.tasks?.length || 0,
+            completedTasks: sState.stats?.completedTasks || (sState.tasks?.filter((t) => t.status === 'verified').length || 0),
+            isActive: (content.id || f.replace('.json', '')) === this.activeSessionId,
+          });
+        } catch {}
+      }
+      return list.sort((a, b) => b.updatedAt - a.updatedAt);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  resumeSession(sessionId) {
+    const sessionFile = path.join(this.sessionsDir, `${sessionId}.json`);
+    if (!fs.existsSync(sessionFile)) {
+      throw new Error(`Session ${sessionId} not found`);
+    }
+    const data = JSON.parse(fs.readFileSync(sessionFile, 'utf-8'));
+    const sState = data.state || data;
+    this.activeSessionId = sessionId;
+    this.activeGoal = sState.activeGoal || data.goal || null;
+    this.tasks = sState.tasks || [];
+    this.currentTaskId = sState.currentTaskId || null;
+    this.isRunning = false;
+    if (sState.manager) this.manager = { ...this.manager, ...sState.manager };
+    if (sState.subagents) {
+      for (const key of Object.keys(sState.subagents)) {
+        if (this.subagents[key]) {
+          this.subagents[key] = { ...this.subagents[key], ...sState.subagents[key] };
+        }
+      }
+    }
+    this.saveState();
+    this.notify('session-resumed', { sessionId, goal: this.activeGoal });
+    return this.getState();
+  }
+
+  createSession(goal = 'New Engineering Objective') {
+    const newId = `session-${Date.now()}`;
+    this.activeSessionId = newId;
+    this.activeGoal = goal;
+    this.tasks = [];
+    this.currentTaskId = null;
+    this.isRunning = false;
+    this.manager.status = 'idle';
+    this.manager.currentThought = `Session started for goal: "${goal}". Ready for decomposition.`;
+    this.manager.decisions = [];
+    this.manager.thread = [];
+    for (const key of Object.keys(this.subagents)) {
+      this.subagents[key].status = 'idle';
+      this.subagents[key].currentTask = null;
+      this.subagents[key].thread = [];
+      if (this.subagents[key].evaluations) this.subagents[key].evaluations = [];
+      if (this.subagents[key].diffs) this.subagents[key].diffs = [];
+    }
+    this.saveState();
+    this.notify('session-created', { sessionId: newId, goal });
+    return this.getState();
   }
 
   notify(event, payload = {}) {
@@ -140,6 +249,11 @@ class SwarmEngine extends EventEmitter {
    *  Goal Planning & Decomposition
    * ------------------------------------------------------------------ */
   async setGoal(goalDescription) {
+    if (this.activeGoal && this.activeGoal !== goalDescription) {
+      this.activeSessionId = `session-${Date.now()}`;
+    } else if (!this.activeSessionId) {
+      this.activeSessionId = `session-${Date.now()}`;
+    }
     this.activeGoal = goalDescription;
     this.manager.status = 'planning';
     this.manager.currentThought = `Analyzing master goal: "${goalDescription}". Formulating task graph and subagent assignments...`;

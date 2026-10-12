@@ -180,6 +180,23 @@ const { SwarmEngine } = require('./swarm/SwarmEngine');
 const swarm = new SwarmEngine();
 
 app.get('/api/swarm/state', (req, res) => res.json(swarm.getState()));
+app.get('/api/swarm/sessions', (req, res) => res.json(swarm.listSessions()));
+app.post('/api/swarm/sessions/resume', express.json(), (req, res) => {
+  try {
+    const state = swarm.resumeSession(req.body.sessionId);
+    res.json({ success: true, state });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post('/api/swarm/sessions/new', express.json(), (req, res) => {
+  try {
+    const state = swarm.createSession(req.body.goal || 'New Swarm Session');
+    res.json({ success: true, state });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 app.post('/api/swarm/goal', express.json(), async (req, res) => {
   try {
     const tasks = await swarm.setGoal(req.body.goal);
@@ -330,6 +347,20 @@ wss.on('connection', (ws) => {
         swarm.setAutoApprove(msg.auto);
       } else if (msg.type === 'swarm-get-state') {
         send({ type: 'swarm-init', state: swarm.getState() });
+      } else if (msg.type === 'swarm-resume-session') {
+        try {
+          swarm.resumeSession(msg.sessionId);
+        } catch (e) {
+          send({ type: 'error', message: e.message });
+        }
+      } else if (msg.type === 'swarm-new-session') {
+        try {
+          swarm.createSession(msg.goal || 'New Swarm Session');
+        } catch (e) {
+          send({ type: 'error', message: e.message });
+        }
+      } else if (msg.type === 'swarm-list-sessions') {
+        send({ type: 'swarm-sessions-list', sessions: swarm.listSessions() });
       }
     } catch (err) {
       send({ type: 'error', message: `Invalid message format: ${err.message}` });
@@ -365,8 +396,8 @@ watcher
 
 
 // Start HTTP server & localtunnel
-server.listen(PORT, async () => {
-  console.log(`Local server listening on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', async () => {
+  console.log(`Local server listening on http://localhost:${PORT} and http://127.0.0.1:${PORT}`);
 
   try { await startLocaltunnel(); } catch (err) {
     console.error('Failed to initialize localtunnel:', err.message);

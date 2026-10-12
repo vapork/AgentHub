@@ -182,6 +182,7 @@
       if (msg.state) {
         localSwarmState = msg.state;
         renderSwarmUI();
+        loadSessions();
       }
       return;
     }
@@ -488,21 +489,60 @@ if (btnSidebarClose && sidebar) {
   });
 }
 
-// Load Sessions
+// Load Sessions (Swarm + Multi-Session Resume)
 async function loadSessions() {
   if (!sessionList) return;
   try {
-    const res = await fetch('/api/chats');
+    const res = await fetch('/api/swarm/sessions');
     const sessions = await res.json();
     sessionList.innerHTML = '';
+
+    if (!sessions || sessions.length === 0) {
+      sessionList.innerHTML = '<div style="padding:10px; color:#64748b; font-size:0.75rem; text-align:center;">No saved sessions</div>';
+      return;
+    }
+
     sessions.forEach(s => {
       const el = document.createElement('div');
-      el.className = 'sidebar-item';
-      el.innerText = `Session ${new Date(parseInt(s.id)).toLocaleTimeString()}`;
-      el.onclick = () => {
-        currentSessionId = s.id;
-        chatHistory = s.history || [];
-        renderChatHistory();
+      const isActive = localSwarmState && (localSwarmState.activeSessionId === s.id);
+      el.className = `sidebar-item ${isActive ? 'active' : ''}`;
+      el.style.cssText = `display:flex; flex-direction:column; gap:3px; padding:8px 10px; margin-bottom:5px; cursor:pointer; border-radius:6px; border:1px solid ${isActive ? 'var(--accent)' : 'transparent'}; background:${isActive ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};`;
+      
+      const title = s.goal || 'Untitled Session';
+      const timeStr = s.updatedAt ? new Date(s.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+      const dateStr = s.updatedAt ? new Date(s.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+      const statusBadge = s.totalTasks > 0
+        ? `<span class="agent-status-badge ${s.completedTasks === s.totalTasks ? 'status-verified' : 'status-in_progress'}" style="font-size:0.6rem; padding:1px 5px;">${s.completedTasks}/${s.totalTasks} Verified</span>`
+        : `<span class="agent-status-badge status-idle" style="font-size:0.6rem; padding:1px 5px;">Ready</span>`;
+
+      el.innerHTML = `
+        <div style="font-weight:600; font-size:0.8rem; color:${isActive ? '#38bdf8' : '#e2e8f0'}; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;" title="${title}">
+          ${isActive ? '▶ ' : ''}${title}
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.7rem; color:#94a3b8; margin-top:2px;">
+          ${statusBadge}
+          <span style="font-size:0.65rem; color:#64748b;">${dateStr} ${timeStr}</span>
+        </div>
+      `;
+
+      el.onclick = async () => {
+        try {
+          const resp = await fetch('/api/swarm/sessions/resume', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId: s.id })
+          });
+          const data = await resp.json();
+          if (data.state) {
+            localSwarmState = data.state;
+            renderSwarmUI();
+            switchView('swarm');
+            loadSessions();
+            appendOutput(`\n[AgentHub] Resumed session: "${s.goal}"\n`, true);
+          }
+        } catch (err) {
+          console.error('Failed to resume session', err);
+        }
         if (window.innerWidth <= 768 && sidebar) sidebar.classList.remove('open');
       };
       sessionList.appendChild(el);
@@ -542,13 +582,17 @@ function renderChatHistory() {
   chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
-// New Session
+// New Session Button
 if (btnNewSession) {
   btnNewSession.addEventListener('click', () => {
-    currentSessionId = Date.now().toString();
-    chatHistory = [];
-    renderChatHistory();
-    if (term) term.clear();
+    if (goalModal) {
+      goalModal.style.display = 'flex';
+      if (goalInputText) {
+        goalInputText.value = '';
+        goalInputText.placeholder = 'Enter engineering goal for this new session...';
+        goalInputText.focus();
+      }
+    }
   });
 }
 
