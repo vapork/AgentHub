@@ -392,49 +392,60 @@
   });
 
   // Settings modal handlers
-  btnSettings.addEventListener('click', () => {
-    settingsModal.style.display = 'flex';
-    apiKeyInput.focus();
-  });
+  if (btnSettings && settingsModal) {
+    btnSettings.addEventListener('click', () => {
+      settingsModal.style.display = 'flex';
+      if (apiKeyInput) apiKeyInput.focus();
+    });
+  }
 
-  btnSettingsCancel.addEventListener('click', () => {
-    settingsModal.style.display = 'none';
-    apiKeyInput.value = '';
-  });
+  if (btnSettingsCancel && settingsModal) {
+    btnSettingsCancel.addEventListener('click', () => {
+      settingsModal.style.display = 'none';
+      if (apiKeyInput) apiKeyInput.value = '';
+    });
+  }
 
-  btnSettingsSave.addEventListener('click', () => {
-    const key = apiKeyInput.value.trim();
-    sendWs({ type: 'set-api-key', key });
-    settingsModal.style.display = 'none';
-    apiKeyInput.value = '';
-  });
+  if (btnSettingsSave && settingsModal) {
+    btnSettingsSave.addEventListener('click', () => {
+      const key = apiKeyInput ? apiKeyInput.value.trim() : '';
+      sendWs({ type: 'set-api-key', key });
+      settingsModal.style.display = 'none';
+      if (apiKeyInput) apiKeyInput.value = '';
+    });
+  }
 
   // Orchestrator Mode toggle
   const orchestratorPanel = document.getElementById('orchestrator-panel');
-  btnOrchestrator.addEventListener('click', () => {
-    orchestratorMode = !orchestratorMode;
-    btnOrchestrator.classList.toggle('active', orchestratorMode);
-    orchestratorPanel.style.display = orchestratorMode ? 'flex' : 'none';
-    appendOutput(`\n[AgentHub] Orchestrator Mode ${orchestratorMode ? 'enabled' : 'disabled'}\n`, true);
-  });
+  if (btnOrchestrator && orchestratorPanel) {
+    btnOrchestrator.addEventListener('click', () => {
+      orchestratorMode = !orchestratorMode;
+      btnOrchestrator.classList.toggle('active', orchestratorMode);
+      orchestratorPanel.style.display = orchestratorMode ? 'flex' : 'none';
+      appendOutput(`\n[AgentHub] Orchestrator Mode ${orchestratorMode ? 'enabled' : 'disabled'}\n`, true);
+    });
+  }
 
   const btnSelectAll = document.getElementById('btn-select-all');
-  btnSelectAll.addEventListener('click', () => {
-    const checkboxes = document.querySelectorAll('.subagent-cb');
-    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-    checkboxes.forEach(cb => cb.checked = !allChecked);
-    btnSelectAll.textContent = allChecked ? 'Select All' : 'Deselect All';
-  });
+  if (btnSelectAll) {
+    btnSelectAll.addEventListener('click', () => {
+      const checkboxes = document.querySelectorAll('.subagent-cb');
+      const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+      checkboxes.forEach(cb => cb.checked = !allChecked);
+      btnSelectAll.textContent = allChecked ? 'Select All' : 'Deselect All';
+    });
+  }
 
   // Auto toggle
   let autoMode = false;
-  btnAuto.addEventListener('click', () => {
-    autoMode = !autoMode;
-    btnAuto.classList.toggle('active', autoMode);
-  });
+  if (btnAuto) {
+    btnAuto.addEventListener('click', () => {
+      autoMode = !autoMode;
+      btnAuto.classList.toggle('active', autoMode);
+    });
+  }
 
-  
-  if (titleBtn) {
+  if (titleBtn && btnSpawn) {
     titleBtn.addEventListener('click', () => {
       btnSpawn.click();
     });
@@ -464,13 +475,14 @@ const btnModelsCancel = document.getElementById('btn-models-cancel');
 const btnModelsSave = document.getElementById('btn-models-save');
 
 // Sidebar Toggle
-btnSidebarToggle.addEventListener('click', () => {
-  sidebar.classList.toggle('open');
-});
-
+if (btnSidebarToggle && sidebar) {
+  btnSidebarToggle.addEventListener('click', () => {
+    sidebar.classList.toggle('open');
+  });
+}
 
 const btnSidebarClose = document.getElementById('btn-sidebar-close');
-if (btnSidebarClose) {
+if (btnSidebarClose && sidebar) {
   btnSidebarClose.addEventListener('click', () => {
     sidebar.classList.remove('open');
   });
@@ -478,6 +490,7 @@ if (btnSidebarClose) {
 
 // Load Sessions
 async function loadSessions() {
+  if (!sessionList) return;
   try {
     const res = await fetch('/api/chats');
     const sessions = await res.json();
@@ -489,10 +502,8 @@ async function loadSessions() {
       el.onclick = () => {
         currentSessionId = s.id;
         chatHistory = s.history || [];
-        
-        
         renderChatHistory();
-        if (window.innerWidth <= 768) sidebar.classList.remove('open');
+        if (window.innerWidth <= 768 && sidebar) sidebar.classList.remove('open');
       };
       sessionList.appendChild(el);
     });
@@ -510,7 +521,6 @@ async function saveSession() {
       body: JSON.stringify({
         id: currentSessionId,
         history: chatHistory,
-        
       })
     });
     loadSessions();
@@ -521,6 +531,7 @@ async function saveSession() {
 
 // Render Chat
 function renderChatHistory() {
+  if (!chatContainer) return;
   chatContainer.innerHTML = '';
   chatHistory.forEach(msg => {
     const el = document.createElement('div');
@@ -532,47 +543,56 @@ function renderChatHistory() {
 }
 
 // New Session
-btnNewSession.addEventListener('click', () => {
-  currentSessionId = Date.now().toString();
-  chatHistory = [];
-  
-  
-  renderChatHistory();
-  term.clear();
-});
-
+if (btnNewSession) {
+  btnNewSession.addEventListener('click', () => {
+    currentSessionId = Date.now().toString();
+    chatHistory = [];
+    renderChatHistory();
+    if (term) term.clear();
+  });
+}
 
 // Models Modal Logic
-btnModels.addEventListener('click', () => modelsModal.style.display = 'flex');
-btnModelsCancel.addEventListener('click', () => modelsModal.style.display = 'none');
-btnModelsSave.addEventListener('click', async () => {
-  const payload = {
-    model_name: document.getElementById('model-name').value,
-    model: document.getElementById('model-id').value,
-    api_base: document.getElementById('model-base').value,
-    api_key: document.getElementById('model-key').value,
-  };
-  await fetch('/api/models', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(payload)
+if (btnModels && modelsModal) {
+  btnModels.addEventListener('click', () => modelsModal.style.display = 'flex');
+}
+if (btnModelsCancel && modelsModal) {
+  btnModelsCancel.addEventListener('click', () => modelsModal.style.display = 'none');
+}
+if (btnModelsSave && modelsModal) {
+  btnModelsSave.addEventListener('click', async () => {
+    const modelNameEl = document.getElementById('model-name');
+    const modelIdEl = document.getElementById('model-id');
+    const modelBaseEl = document.getElementById('model-base');
+    const modelKeyEl = document.getElementById('model-key');
+    const payload = {
+      model_name: modelNameEl ? modelNameEl.value : '',
+      model: modelIdEl ? modelIdEl.value : '',
+      api_base: modelBaseEl ? modelBaseEl.value : '',
+      api_key: modelKeyEl ? modelKeyEl.value : '',
+    };
+    await fetch('/api/models', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    modelsModal.style.display = 'none';
+    alert('Model added/updated in litellm_config.yaml!');
+    window.location.reload();
   });
-  modelsModal.style.display = 'none';
-  alert('Model added/updated in litellm_config.yaml!');
-  window.location.reload(); // reload to fetch new models
-});
+}
 
 // Pause Swarm (Send Ctrl+C to interrupt models)
-btnPause.addEventListener('click', () => {
-  ws.send(JSON.stringify({ type: 'input', data: '\x03' })); // Ctrl+C
-  alert('Sent Interrupt (Ctrl+C) to active processes. This pauses active AI generation.');
-});
-
-// Intercept Chat View additions to save history
-// removed bad patch line
+if (btnPause) {
+  btnPause.addEventListener('click', () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'input', data: '\x03' }));
+    }
+    alert('Sent Interrupt (Ctrl+C) to active processes. This pauses active AI generation.');
+  });
+}
 
 loadSessions();
-
 
 // --- PC Splash Screen Logic ---
 const splashScreen = document.getElementById('splash-screen');
@@ -580,21 +600,15 @@ const btnSplashContinue = document.getElementById('btn-splash-continue');
 const splashQr = document.getElementById('splash-qr');
 const splashUrl = document.getElementById('splash-url');
 
-if (window.innerWidth > 768) {
-  splashScreen.style.display = 'flex';
-  
-  // Fetch Tunnel URL
-  fetch('/api/tunnel').then(r => r.json()).then(data => {
-    if (data.url) {
-      splashQr.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.url)}`;
-      splashUrl.innerText = data.url;
-    }
-  });
+if (splashScreen) {
+  splashScreen.style.display = 'none'; // Keep hidden on PC by default so UI is immediately active
 }
 
-btnSplashContinue.addEventListener('click', () => {
-  splashScreen.style.display = 'none';
-});
+if (btnSplashContinue && splashScreen) {
+  btnSplashContinue.addEventListener('click', () => {
+    splashScreen.style.display = 'none';
+  });
+}
 
 
 
