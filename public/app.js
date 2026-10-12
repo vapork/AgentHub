@@ -890,11 +890,20 @@ function renderSwarmUI() {
 
   // Manager Next-Action Banner (One-click guidance)
   if (managerActionBanner && localSwarmState.tasks) {
-    const nextTask = localSwarmState.tasks.find(t => t.status === 'ready');
+    const failedTask = localSwarmState.tasks.find(t => t.status === 'failed');
     const inProgTask = localSwarmState.tasks.find(t => t.status === 'in_progress');
+    const nextTask = localSwarmState.tasks.find(t => t.status === 'ready');
     const allDone = localSwarmState.tasks.length > 0 && localSwarmState.tasks.every(t => t.status === 'verified');
 
-    if (inProgTask) {
+    if (failedTask) {
+      managerActionBanner.style.display = 'flex';
+      managerActionText.innerHTML = `⚠️ <strong>Task Stalled:</strong> "${failedTask.title}" failed evaluation (${failedTask.attempts || 3} attempts).`;
+      if (btnManagerAction) {
+        btnManagerAction.textContent = '👑 Manager Takeover & Fix';
+        btnManagerAction.className = 'swarm-btn primary';
+        btnManagerAction.onclick = () => sendWs({ type: 'swarm-manager-takeover', taskId: failedTask.id });
+      }
+    } else if (inProgTask) {
       managerActionBanner.style.display = 'flex';
       managerActionText.innerHTML = `⚡ <strong>In Progress:</strong> ${inProgTask.title} (@${inProgTask.assignedTo})`;
       if (btnManagerAction) {
@@ -955,14 +964,20 @@ function renderWorkspaceFeed() {
         card.className = `task-card ${task.status}`;
         
         let runBtnHtml = '';
-        if (task.status === 'ready' || task.status === 'failed') {
+        if (task.status === 'ready') {
           runBtnHtml = `<button class="swarm-btn primary btn-task-run" data-id="${task.id}" style="padding:3px 8px; font-size:0.75rem;">▶ Run</button>`;
+        } else if (task.status === 'failed') {
+          runBtnHtml = `
+            <button class="swarm-btn primary btn-task-takeover" data-id="${task.id}" style="padding:3px 8px; font-size:0.75rem;" title="Manager steps in and synthesizes complete solution">👑 Takeover</button>
+            <button class="swarm-btn btn-task-consult" data-id="${task.id}" style="padding:3px 8px; font-size:0.75rem; background:#282c37; color:#38bdf8; border-color:#38bdf8;" title="Ask Architect to create an unblocking blueprint">📐 Consult</button>
+            <button class="swarm-btn btn-task-run" data-id="${task.id}" style="padding:3px 8px; font-size:0.75rem;">🔄 Retry</button>
+          `;
         }
 
         card.innerHTML = `
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <span style="font-weight:700; color:white; font-size:0.85rem;">${task.title}</span>
-            <div style="display:flex; gap:6px; align-items:center;">
+            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
               <span class="agent-status-badge status-${task.status}">${task.status}</span>
               ${runBtnHtml}
             </div>
@@ -979,6 +994,20 @@ function renderWorkspaceFeed() {
         if (runBtn) {
           runBtn.addEventListener('click', () => {
             sendWs({ type: 'swarm-execute-task', taskId: task.id });
+          });
+        }
+
+        const takeoverBtn = card.querySelector('.btn-task-takeover');
+        if (takeoverBtn) {
+          takeoverBtn.addEventListener('click', () => {
+            sendWs({ type: 'swarm-manager-takeover', taskId: task.id });
+          });
+        }
+
+        const consultBtn = card.querySelector('.btn-task-consult');
+        if (consultBtn) {
+          consultBtn.addEventListener('click', () => {
+            sendWs({ type: 'swarm-consult-architect', taskId: task.id });
           });
         }
 
@@ -1083,14 +1112,34 @@ function renderWorkspaceFeed() {
       const errorCard = document.createElement('div');
       errorCard.className = 'agent-active-error-card';
       errorCard.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <strong style="color:#ef4444; font-size:0.85rem;">⚠️ Max Retries Reached (${localSwarmState.maxRetries || 3}/${localSwarmState.maxRetries || 3})</strong>
-          ${failedTask ? `<button class="swarm-btn primary btn-sub-retry" data-id="${failedTask.id}" style="padding:4px 10px; font-size:0.75rem;">🔄 Retry Task (8K Token Budget)</button>` : ''}
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+          <strong style="color:#ef4444; font-size:0.85rem;">⚠️ Max Retries Reached (${failedTask?.attempts || 3}/${localSwarmState.maxRetries || 3})</strong>
+          <span class="agent-status-badge status-failed" style="font-size:0.65rem;">ESCALATED TO MANAGER</span>
         </div>
-        <div style="font-size:0.78rem; color:#cbd5e1; margin-top:4px;">
-          Task output was previously rejected by Evaluator due to output truncation (token limit). Token budget has been upgraded to 8K. Click retry to run again.
+        <div style="font-size:0.78rem; color:#cbd5e1; margin-top:6px;">
+          Subagent encountered evaluation rejections. The Manager is equipped to guide, consult peer agents, or autonomously take over to unblock the sprint:
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+          ${failedTask ? `<button class="swarm-btn primary btn-sub-takeover" data-id="${failedTask.id}" style="padding:5px 12px; font-size:0.8rem;">👑 Manager Takeover & Auto-Fix</button>` : ''}
+          ${failedTask ? `<button class="swarm-btn btn-sub-consult" data-id="${failedTask.id}" style="padding:5px 12px; font-size:0.8rem; background:#282c37; color:#38bdf8; border-color:#38bdf8;">📐 Consult Architect</button>` : ''}
+          ${failedTask ? `<button class="swarm-btn btn-sub-retry" data-id="${failedTask.id}" style="padding:5px 10px; font-size:0.78rem;">🔄 Retry Task</button>` : ''}
         </div>
       `;
+
+      const takeoverBtn = errorCard.querySelector('.btn-sub-takeover');
+      if (takeoverBtn) {
+        takeoverBtn.addEventListener('click', () => {
+          sendWs({ type: 'swarm-manager-takeover', taskId: takeoverBtn.dataset.id });
+        });
+      }
+
+      const consultBtn = errorCard.querySelector('.btn-sub-consult');
+      if (consultBtn) {
+        consultBtn.addEventListener('click', () => {
+          sendWs({ type: 'swarm-consult-architect', taskId: consultBtn.dataset.id });
+        });
+      }
+
       const retryBtn = errorCard.querySelector('.btn-sub-retry');
       if (retryBtn) {
         retryBtn.addEventListener('click', () => {

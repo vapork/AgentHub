@@ -157,3 +157,56 @@ test('SwarmEngine: Evaluator-Optimizer Closed Loop Verification', async () => {
 
   if (fs.existsSync(testStorage)) fs.unlinkSync(testStorage);
 });
+
+test('SwarmEngine: Peer Consultation and Autonomous Manager Takeover', async () => {
+  const testStorage = path.join(__dirname, 'test_sessions4.json');
+  if (fs.existsSync(testStorage)) fs.unlinkSync(testStorage);
+
+  class TakeoverMockLLM {
+    async chatCompletion({ model, messages }) {
+      const prompt = messages[0]?.content || '';
+      if (prompt.includes('Decompose the following user goal')) {
+        return {
+          content: JSON.stringify([
+            { id: 'task-1', title: 'Complex Core Logic', assignedTo: 'coder', description: 'Write core logic', acceptanceCriteria: 'Zero bugs' },
+          ]),
+        };
+      }
+      if (prompt.includes('System Architect of the AI engineering swarm')) {
+        return { content: '### 📐 Architect Fix Blueprint: Use explicit Button import from @mui/material' };
+      }
+      if (prompt.includes('Manager Agent (Antigravity)')) {
+        return { content: '### 👑 Manager Direct Resolution: Full production code with perfect imports' };
+      }
+      if (prompt.includes('Evaluator / Quality Critic')) {
+        return {
+          content: JSON.stringify({ passed: true, score: 98, diagnosticFeedback: 'Manager takeover resolved all criteria.' }),
+        };
+      }
+      return { content: 'Technical deliverable' };
+    }
+  }
+
+  const engine = new SwarmEngine({
+    storagePath: testStorage,
+    llmClient: new TakeoverMockLLM(),
+    maxRetries: 2,
+    autoApprove: true,
+  });
+
+  await engine.setGoal('Complex Subsystem Migration');
+  
+  // Test consultArchitect
+  const archGuidance = await engine.consultArchitect('task-1', 'Missing Button import');
+  assert.match(archGuidance, /Architect Fix Blueprint/);
+  assert.match(engine.tasks[0].architectGuidance, /Button import/);
+
+  // Test takeoverTask
+  const takeoverResult = await engine.takeoverTask('task-1');
+  assert.equal(takeoverResult.success, true);
+  assert.equal(takeoverResult.task.status, 'verified');
+  assert.equal(takeoverResult.managerTakeover, true);
+  assert.match(engine.manager.currentThought, /Manager successfully resolved/);
+
+  if (fs.existsSync(testStorage)) fs.unlinkSync(testStorage);
+});

@@ -351,6 +351,12 @@ wss.on('connection', (ws) => {
         swarm.pause();
       } else if (msg.type === 'swarm-execute-task') {
         swarm.executeTask(msg.taskId).catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-manager-takeover') {
+        swarm.takeoverTask(msg.taskId).catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-consult-architect') {
+        swarm.consultArchitect(msg.taskId, msg.feedback || '').then(() => {
+          return swarm.executeTask(msg.taskId);
+        }).catch(e => send({ type: 'error', message: e.message }));
       } else if (msg.type === 'swarm-set-auto') {
         swarm.setAutoApprove(msg.auto);
       } else if (msg.type === 'swarm-get-state') {
