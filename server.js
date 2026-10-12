@@ -80,6 +80,7 @@ let currentTunnel = null;
 let globalTunnelUrl = '';
 
 async function startLocaltunnel() {
+  if (process.env.DISABLE_TUNNEL) return;
   if (currentTunnel) {
     try { currentTunnel.close(); } catch(e){}
   }
@@ -174,10 +175,41 @@ app.post('/api/models', express.json(), (req, res) => {
 });
 
 
+// --- SWARM ENGINE CORE ---
+const { SwarmEngine } = require('./swarm/SwarmEngine');
+const swarm = new SwarmEngine();
+
+app.get('/api/swarm/state', (req, res) => res.json(swarm.getState()));
+app.post('/api/swarm/goal', express.json(), async (req, res) => {
+  try {
+    const tasks = await swarm.setGoal(req.body.goal);
+    res.json({ success: true, tasks, state: swarm.getState() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post('/api/swarm/steer', express.json(), async (req, res) => {
+  try {
+    const result = await swarm.steer(req.body);
+    res.json({ success: true, result, state: swarm.getState() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 const server = http.createServer(app);
 
 // Attach WebSocket server
 const wss = new WebSocketServer({ server });
+
+// Broadcast Swarm events to all connected clients in real time
+swarm.on('swarm-event', ({ event, payload, state }) => {
+  wss.clients.forEach(client => {
+    if (client.readyState === 1) { // 1 = OPEN
+      client.send(JSON.stringify({ type: 'swarm-update', event, payload, state }));
+    }
+  });
+});
 
 wss.on('connection', (ws) => {
   let runningProcess = null;
@@ -187,6 +219,9 @@ wss.on('connection', (ws) => {
       ws.send(JSON.stringify(payload));
     }
   };
+
+  // Push current swarm state on connection
+  send({ type: 'swarm-init', state: swarm.getState() });
 
   const killCurrentProcess = () => {
     if (runningProcess) {
@@ -280,6 +315,21 @@ wss.on('connection', (ws) => {
         } catch (e) {
           send({ type: 'error', message: 'Failed to spawn chat turn: ' + e.message });
         }
+      } else if (msg.type === 'swarm-set-goal') {
+        swarm.setGoal(msg.goal).catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-steer') {
+        swarm.steer({ target: msg.target || 'manager', message: msg.message, author: 'user' })
+          .catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-run') {
+        swarm.runAll().catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-pause') {
+        swarm.pause();
+      } else if (msg.type === 'swarm-execute-task') {
+        swarm.executeTask(msg.taskId).catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-set-auto') {
+        swarm.setAutoApprove(msg.auto);
+      } else if (msg.type === 'swarm-get-state') {
+        send({ type: 'swarm-init', state: swarm.getState() });
       }
     } catch (err) {
       send({ type: 'error', message: `Invalid message format: ${err.message}` });

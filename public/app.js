@@ -76,49 +76,81 @@
   let isChatView = false;
   let currentAgentBubble = null;
   let isChatbotMode = false;
-  
 
-  function appendChatBubble(text, isUser) {
-    const bubble = document.createElement('div');
-    bubble.className = `chat-bubble ${isUser ? 'user' : 'agent'}`;
-    bubble.textContent = text;
-    chatContainer.appendChild(bubble);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
-    if (typeof chatHistory !== 'undefined') {
-      chatHistory.push({ role: isUser ? 'user' : 'agent', content: text });
-      if (typeof saveSession === 'function') saveSession();
-    }
+  // --- SWARM CONTROL CENTER STATE ---
+  let localSwarmState = null;
+  let selectedAgentId = 'manager';
+  let currentSteeringTarget = 'manager';
+  let currentViewMode = 'swarm'; // 'swarm' | 'terminal' | 'chat'
+
+  const swarmContainer = document.getElementById('swarm-container');
+  const swarmActiveGoal = document.getElementById('swarm-active-goal');
+  const swarmTaskCounter = document.getElementById('swarm-task-counter');
+  const swarmProgressFill = document.getElementById('swarm-progress-fill');
+  const managerStatusBadge = document.getElementById('manager-status-badge');
+  const managerThoughtText = document.getElementById('manager-thought-text');
+  const swarmTabsContainer = document.getElementById('swarm-tabs-container');
+  const workspaceAgentTitle = document.getElementById('workspace-agent-title');
+  const workspaceAgentBadge = document.getElementById('workspace-agent-badge');
+  const workspaceFeed = document.getElementById('workspace-feed');
+  const btnTargetSelector = document.getElementById('btn-target-selector');
+  const targetPillLabel = document.getElementById('target-pill-label');
+  const goalModal = document.getElementById('goal-modal');
+  const goalInputText = document.getElementById('goal-input-text');
+  const btnGoalCancel = document.getElementById('btn-goal-cancel');
+  const btnGoalSubmit = document.getElementById('btn-goal-submit');
+  const btnSwarmNewGoal = document.getElementById('btn-swarm-new-goal');
+  const btnSwarmRun = document.getElementById('btn-swarm-run');
+  const btnSwarmPause = document.getElementById('btn-swarm-pause');
+  const btnSwarmAuto = document.getElementById('btn-swarm-auto');
+
+  const TARGETS = [
+    { id: 'manager', label: '@Manager 👑', placeholder: 'Instruct @Manager (Antigravity)...' },
+    { id: 'architect', label: '@Architect 📐', placeholder: 'Steer @Architect on system design...' },
+    { id: 'coder', label: '@Coder 💻', placeholder: 'Guide @Master Coder on implementation...' },
+    { id: 'evaluator', label: '@Evaluator ⚖️', placeholder: 'Ask @Evaluator about quality/tests...' },
+    { id: 'tester', label: '@Tester 🧪', placeholder: 'Direct @Test Runner on test suites...' },
+  ];
+
+  function setSteeringTarget(targetId) {
+    const found = TARGETS.find(t => t.id === targetId) || TARGETS[0];
+    currentSteeringTarget = found.id;
+    if (targetPillLabel) targetPillLabel.textContent = found.label;
+    if (commandInput) commandInput.placeholder = found.placeholder;
   }
 
-  function appendOutput(text, isSystem = false) {
-    // PTY output only goes to Terminal View!
-    if (isSystem) {
-      term.write(`\r\n\x1b[33m${text}\x1b[0m\r\n`);
-    } else {
-      term.write(text);
-      // v2 feature: parse cost
-      
+  function cycleSteeringTarget() {
+    const idx = TARGETS.findIndex(t => t.id === currentSteeringTarget);
+    const next = TARGETS[(idx + 1) % TARGETS.length];
+    setSteeringTarget(next.id);
+  }
 
+  if (btnTargetSelector) {
+    btnTargetSelector.addEventListener('click', cycleSteeringTarget);
+  }
+
+  function switchView(mode) {
+    currentViewMode = mode;
+    if (swarmContainer) swarmContainer.style.display = mode === 'swarm' ? 'flex' : 'none';
+    if (terminal) terminal.style.display = mode === 'terminal' ? 'block' : 'none';
+    if (chatContainer) chatContainer.style.display = mode === 'chat' ? 'flex' : 'none';
+
+    btnViewToggle.textContent = mode === 'swarm' ? 'Swarm View (Active)' : (mode === 'terminal' ? 'Terminal View' : 'Chat View');
+    btnViewToggle.classList.toggle('active', mode !== 'terminal');
+
+    if (mode === 'terminal') {
+      setTimeout(() => fitAddon.fit(), 50);
     }
   }
 
   btnViewToggle.addEventListener('click', () => {
-    isChatView = !isChatView;
-    btnViewToggle.classList.toggle('active', isChatView);
-    if (isChatView) {
-      terminal.style.display = 'none';
-      chatContainer.style.display = 'flex';
-      agentSelect.style.display = 'none';
-      btnSpawn.style.display = 'none';
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-    } else {
-      terminal.style.display = 'block';
-      chatContainer.style.display = 'none';
-      agentSelect.style.display = 'inline-block';
-      btnSpawn.style.display = 'inline-block';
-      setTimeout(() => fitAddon.fit(), 50);
-    }
+    if (currentViewMode === 'swarm') switchView('terminal');
+    else if (currentViewMode === 'terminal') switchView('chat');
+    else switchView('swarm');
   });
+
+  // Default to Swarm Control View
+  switchView('swarm');
 
   function setStatus(status, text) {
     if (status === 'running') {
@@ -145,6 +177,15 @@
         if (msg.type === 'output') {
           appendOutput(msg.data);
         } else 
+    // Swarm Control Center Events
+    if (msg.type === 'swarm-init' || msg.type === 'swarm-update') {
+      if (msg.state) {
+        localSwarmState = msg.state;
+        renderSwarmUI();
+      }
+      return;
+    }
+
     // v2 features
     if (msg.type === 'file-event') {
       const el = document.createElement('div');
@@ -278,6 +319,25 @@
         
         val += `\n\n[Orchestrator Instruction]: Please act as the master agent. Coordinate and delegate work to the following available subagents to fulfill the user's request. Use the exact CLI commands provided below to spawn them in the terminal. Ensure their standard output is visibly streamed to the terminal so the user can periodically monitor their progress:\n${agentInstructions}`;
       }
+    }
+
+    if (currentViewMode === 'swarm') {
+      if (!val.trim()) return;
+      sendWs({
+        type: 'swarm-steer',
+        target: currentSteeringTarget,
+        message: val,
+      });
+      if (localSwarmState) {
+        if (currentSteeringTarget === 'manager') {
+          localSwarmState.manager.thread.push({ role: 'user', content: val, timestamp: Date.now() });
+        } else if (localSwarmState.subagents[currentSteeringTarget]) {
+          localSwarmState.subagents[currentSteeringTarget].thread.push({ role: 'user', content: val, timestamp: Date.now() });
+        }
+        renderWorkspaceFeed();
+      }
+      commandInput.value = '';
+      return;
     }
 
     if (isChatView) {
@@ -575,10 +635,287 @@ if (btnQrModal) {
       }
     });
   });
-  
+}
+
+if (btnQrClose) {
   btnQrClose.addEventListener('click', () => {
     qrModal.style.display = 'none';
   });
 }
+
+// --- SWARM CONTROL CENTER LOGIC ---
+function selectAgent(agentId) {
+  selectedAgentId = agentId;
+  setSteeringTarget(agentId);
+  renderSwarmTabs();
+  renderWorkspaceFeed();
+}
+
+function renderSwarmTabs() {
+  if (!swarmTabsContainer) return;
+  const tabs = [
+    { id: 'manager', label: '👑 Manager', icon: '👑', status: localSwarmState?.manager?.status },
+    { id: 'architect', label: '📐 Architect', icon: '📐', status: localSwarmState?.subagents?.architect?.status },
+    { id: 'coder', label: '💻 Master Coder', icon: '💻', status: localSwarmState?.subagents?.coder?.status },
+    { id: 'evaluator', label: '⚖️ Evaluator', icon: '⚖️', status: localSwarmState?.subagents?.evaluator?.status },
+    { id: 'tester', label: '🧪 Test Runner', icon: '🧪', status: localSwarmState?.subagents?.tester?.status },
+  ];
+
+  swarmTabsContainer.innerHTML = '';
+  tabs.forEach(t => {
+    const tabEl = document.createElement('div');
+    tabEl.className = `swarm-tab ${selectedAgentId === t.id ? 'active' : ''}`;
+    tabEl.dataset.agent = t.id;
+    
+    const statusClass = `status-${t.status || 'idle'}`;
+    tabEl.innerHTML = `<span>${t.label}</span> <span class="agent-status-badge ${statusClass}" style="font-size:0.65rem;">${t.status || 'idle'}</span>`;
+    
+    tabEl.addEventListener('click', () => selectAgent(t.id));
+    swarmTabsContainer.appendChild(tabEl);
+  });
+}
+
+function renderSwarmUI() {
+  if (!localSwarmState) return;
+
+  // 1. Goal & Progress
+  if (swarmActiveGoal) {
+    swarmActiveGoal.textContent = localSwarmState.activeGoal || 'No active goal set';
+  }
+  const completed = localSwarmState.stats?.completedTasks || 0;
+  const total = localSwarmState.stats?.totalTasks || 0;
+  if (swarmTaskCounter) {
+    swarmTaskCounter.textContent = `${completed}/${total} Verified`;
+    swarmTaskCounter.className = `agent-status-badge ${completed === total && total > 0 ? 'status-verified' : 'status-in_progress'}`;
+  }
+  if (swarmProgressFill) {
+    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+    swarmProgressFill.style.width = `${pct}%`;
+  }
+
+  // 2. Controls
+  if (btnSwarmAuto) {
+    btnSwarmAuto.textContent = `⚡ Auto-Heal: ${localSwarmState.autoApprove ? 'ON' : 'OFF'}`;
+    btnSwarmAuto.classList.toggle('primary', localSwarmState.autoApprove);
+  }
+  if (btnSwarmRun) {
+    btnSwarmRun.textContent = localSwarmState.isRunning ? 'Running...' : '▶ Run Swarm';
+    btnSwarmRun.disabled = localSwarmState.isRunning;
+  }
+
+  // 3. Manager Status Card
+  if (managerStatusBadge && localSwarmState.manager) {
+    managerStatusBadge.textContent = localSwarmState.manager.status;
+    managerStatusBadge.className = `agent-status-badge status-${localSwarmState.manager.status}`;
+  }
+  if (managerThoughtText && localSwarmState.manager) {
+    managerThoughtText.textContent = localSwarmState.manager.currentThought;
+  }
+
+  // 4. Tabs & Workspace
+  renderSwarmTabs();
+  renderWorkspaceFeed();
+}
+
+function renderWorkspaceFeed() {
+  if (!workspaceFeed || !localSwarmState) return;
+  workspaceFeed.innerHTML = '';
+
+  if (selectedAgentId === 'manager') {
+    if (workspaceAgentTitle) workspaceAgentTitle.textContent = '👑 Manager (Antigravity) Workspace';
+    if (workspaceAgentBadge && localSwarmState.manager) {
+      workspaceAgentBadge.textContent = localSwarmState.manager.status;
+      workspaceAgentBadge.className = `agent-status-badge status-${localSwarmState.manager.status}`;
+    }
+
+    // Section: Task Execution Graph
+    const taskSection = document.createElement('div');
+    taskSection.innerHTML = `<h3 style="font-size:0.9rem; color:#fff; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+      <span>📋 Swarm Task Graph (${localSwarmState.tasks?.length || 0} tasks)</span>
+    </h3>`;
+
+    if (!localSwarmState.tasks || localSwarmState.tasks.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'color:#64748b; font-size:0.85rem; padding:16px; border:1px dashed var(--border); border-radius:8px; text-align:center;';
+      empty.textContent = 'No tasks decomposed yet. Click "🎯 New Goal" to initialize the autonomous swarm task graph.';
+      taskSection.appendChild(empty);
+    } else {
+      localSwarmState.tasks.forEach(task => {
+        const card = document.createElement('div');
+        card.className = `task-card ${task.status}`;
+        
+        let runBtnHtml = '';
+        if (task.status === 'ready' || task.status === 'failed') {
+          runBtnHtml = `<button class="swarm-btn primary btn-task-run" data-id="${task.id}" style="padding:3px 8px; font-size:0.75rem;">▶ Run</button>`;
+        }
+
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-weight:700; color:white; font-size:0.85rem;">${task.title}</span>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <span class="agent-status-badge status-${task.status}">${task.status}</span>
+              ${runBtnHtml}
+            </div>
+          </div>
+          <div style="font-size:0.8rem; color:#94a3b8;">${task.description}</div>
+          <div style="font-size:0.75rem; color:#10b981;">✓ Criteria: ${task.acceptanceCriteria}</div>
+          <div style="font-size:0.7rem; color:#64748b; display:flex; justify-content:space-between;">
+            <span>Assigned: <strong>@${task.assignedTo}</strong></span>
+            <span>Attempts: ${task.attempts || 0}/${localSwarmState.maxRetries || 3}</span>
+          </div>
+        `;
+
+        const runBtn = card.querySelector('.btn-task-run');
+        if (runBtn) {
+          runBtn.addEventListener('click', () => {
+            sendWs({ type: 'swarm-execute-task', taskId: task.id });
+          });
+        }
+
+        taskSection.appendChild(card);
+      });
+    }
+    workspaceFeed.appendChild(taskSection);
+
+    // Section: Decisions Log
+    if (localSwarmState.manager?.decisions && localSwarmState.manager.decisions.length > 0) {
+      const decSection = document.createElement('div');
+      decSection.innerHTML = `<h3 style="font-size:0.9rem; color:#fff; margin-top:12px; margin-bottom:8px;">🧠 Manager Strategic Decisions</h3>`;
+      localSwarmState.manager.decisions.slice(-5).reverse().forEach(d => {
+        const dCard = document.createElement('div');
+        dCard.style.cssText = 'background:#15171e; border:1px solid var(--border); border-radius:6px; padding:8px 10px; font-size:0.8rem; color:#cbd5e1; margin-bottom:6px;';
+        dCard.innerHTML = `<span style="color:#64748b; font-size:0.7rem;">${new Date(d.timestamp).toLocaleTimeString()}</span> - ${d.decision}`;
+        decSection.appendChild(dCard);
+      });
+      workspaceFeed.appendChild(decSection);
+    }
+
+    // Section: Manager Chat Thread
+    if (localSwarmState.manager?.thread && localSwarmState.manager.thread.length > 0) {
+      const threadSection = document.createElement('div');
+      threadSection.innerHTML = `<h3 style="font-size:0.9rem; color:#fff; margin-top:12px; margin-bottom:8px;">💬 Manager Dialogue Stream</h3>`;
+      localSwarmState.manager.thread.forEach(msg => {
+        const bubble = document.createElement('div');
+        bubble.className = `chat-bubble ${msg.role === 'user' ? 'user' : 'agent'}`;
+        bubble.innerHTML = `<div style="font-size:0.7rem; opacity:0.7; margin-bottom:2px;">${msg.role === 'user' ? 'Operator' : '👑 Manager (Antigravity)'}</div><div>${msg.content}</div>`;
+        threadSection.appendChild(bubble);
+      });
+      workspaceFeed.appendChild(threadSection);
+    }
+
+  } else {
+    // Subagent View
+    const sub = localSwarmState.subagents[selectedAgentId];
+    if (!sub) return;
+
+    if (workspaceAgentTitle) workspaceAgentTitle.textContent = `${sub.icon} ${sub.name}`;
+    if (workspaceAgentBadge) {
+      workspaceAgentBadge.textContent = sub.status;
+      workspaceAgentBadge.className = `agent-status-badge status-${sub.status}`;
+    }
+
+    const infoCard = document.createElement('div');
+    infoCard.style.cssText = 'background:#15171e; border:1px solid var(--border); border-radius:8px; padding:10px 12px;';
+    infoCard.innerHTML = `
+      <div style="font-size:0.85rem; color:#e2e8f0; font-weight:600;">${sub.role}</div>
+      <div style="font-size:0.75rem; color:#94a3b8; margin-top:4px;">Model: <code style="color:var(--accent);">${sub.model}</code></div>
+      ${sub.currentTask ? `<div style="font-size:0.8rem; color:#06b6d4; margin-top:4px;">⚡ Current Task: <strong>${sub.currentTask}</strong></div>` : ''}
+    `;
+    workspaceFeed.appendChild(infoCard);
+
+    // If Evaluator: show scorecard
+    if (selectedAgentId === 'evaluator' && sub.evaluations && sub.evaluations.length > 0) {
+      const evalSection = document.createElement('div');
+      evalSection.innerHTML = `<h3 style="font-size:0.9rem; color:#fff; margin-top:10px; margin-bottom:6px;">⚖️ Evaluator-Optimizer Scorecards</h3>`;
+      sub.evaluations.slice(-5).reverse().forEach(ev => {
+        const sc = document.createElement('div');
+        sc.style.cssText = `background:#15171e; border:1px solid ${ev.passed ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)'}; border-radius:8px; padding:8px 10px; font-size:0.8rem; margin-bottom:6px;`;
+        sc.innerHTML = `
+          <div style="display:flex; justify-content:space-between;">
+            <span style="font-weight:700; color:${ev.passed ? '#10b981' : '#ef4444'};">${ev.passed ? 'PASSED ✓' : 'REJECTED ✗'} (Score: ${ev.score}/100)</span>
+            <span style="font-size:0.7rem; color:#64748b;">${new Date(ev.timestamp).toLocaleTimeString()}</span>
+          </div>
+          <div style="color:#cbd5e1; margin-top:4px;">${ev.diagnosticFeedback}</div>
+        `;
+        evalSection.appendChild(sc);
+      });
+      workspaceFeed.appendChild(evalSection);
+    }
+
+    // Subagent Thread
+    if (sub.thread && sub.thread.length > 0) {
+      const threadSection = document.createElement('div');
+      threadSection.innerHTML = `<h3 style="font-size:0.9rem; color:#fff; margin-top:10px; margin-bottom:6px;">💬 Agent Activity & Output Stream</h3>`;
+      sub.thread.forEach(msg => {
+        const bubble = document.createElement('div');
+        bubble.className = `chat-bubble ${msg.role === 'user' ? 'user' : 'agent'}`;
+        bubble.innerHTML = `<div style="font-size:0.7rem; opacity:0.7; margin-bottom:2px;">${msg.role === 'user' ? 'Operator Directive' : sub.name}</div><div style="white-space:pre-wrap; font-family:monospace; font-size:0.85rem;">${msg.content}</div>`;
+        threadSection.appendChild(bubble);
+      });
+      workspaceFeed.appendChild(threadSection);
+    } else {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'color:#64748b; font-size:0.85rem; padding:16px; text-align:center; font-style:italic;';
+      empty.textContent = `No messages or outputs for ${sub.name} yet. Direct an instruction below to steer this subagent.`;
+      workspaceFeed.appendChild(empty);
+    }
+  }
+
+  workspaceFeed.scrollTop = workspaceFeed.scrollHeight;
+}
+
+// Swarm Button Listeners
+if (btnSwarmNewGoal) {
+  btnSwarmNewGoal.addEventListener('click', () => {
+    if (goalModal) {
+      goalModal.style.display = 'flex';
+      if (goalInputText) goalInputText.focus();
+    }
+  });
+}
+
+if (btnGoalCancel) {
+  btnGoalCancel.addEventListener('click', () => {
+    if (goalModal) goalModal.style.display = 'none';
+  });
+}
+
+if (btnGoalSubmit) {
+  btnGoalSubmit.addEventListener('click', () => {
+    const goalText = goalInputText ? goalInputText.value.trim() : '';
+    if (!goalText) return;
+    sendWs({ type: 'swarm-set-goal', goal: goalText });
+    if (goalModal) goalModal.style.display = 'none';
+    if (goalInputText) goalInputText.value = '';
+  });
+}
+
+if (btnSwarmRun) {
+  btnSwarmRun.addEventListener('click', () => {
+    sendWs({ type: 'swarm-run' });
+  });
+}
+
+if (btnSwarmPause) {
+  btnSwarmPause.addEventListener('click', () => {
+    sendWs({ type: 'swarm-pause' });
+  });
+}
+
+if (btnSwarmAuto) {
+  btnSwarmAuto.addEventListener('click', () => {
+    const nextAuto = !Boolean(localSwarmState?.autoApprove);
+    sendWs({ type: 'swarm-set-auto', auto: nextAuto });
+  });
+}
+
+// Fetch initial state via REST immediately on page load
+fetch('/api/swarm/state')
+  .then(r => r.json())
+  .then(st => {
+    localSwarmState = st;
+    renderSwarmUI();
+  })
+  .catch(() => {});
 
 })();
