@@ -143,13 +143,21 @@ class SwarmEngine extends EventEmitter {
     this.activeGoal = goalDescription;
     this.manager.status = 'planning';
     this.manager.currentThought = `Analyzing master goal: "${goalDescription}". Formulating task graph and subagent assignments...`;
-    this.notify('goal-started', { goal: goalDescription });
 
-    this.manager.thread.push({
+    // Reset subagent states for new goal
+    for (const key of Object.keys(this.subagents)) {
+      this.subagents[key].status = 'idle';
+      this.subagents[key].currentTask = null;
+      this.subagents[key].thread = [];
+    }
+
+    this.manager.thread = [{
       role: 'user',
       content: `Master Goal: ${goalDescription}`,
       timestamp: Date.now(),
-    });
+    }];
+
+    this.notify('goal-started', { goal: goalDescription });
 
     // Generate initial task plan
     const prompt = [

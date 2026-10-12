@@ -875,7 +875,11 @@ function renderWorkspaceFeed() {
     }
   }
 
-  workspaceFeed.scrollTop = workspaceFeed.scrollHeight;
+  if (selectedAgentId === 'manager') {
+    workspaceFeed.scrollTop = 0; // Keep task graph front and center
+  } else {
+    workspaceFeed.scrollTop = workspaceFeed.scrollHeight;
+  }
 }
 
 // Swarm Button Listeners
