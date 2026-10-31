@@ -2,6 +2,7 @@ const EventEmitter = require('events');
 const fs = require('fs');
 const path = require('path');
 const { LiteLLMClient } = require('./LiteLLMClient');
+const { GitWorkspaceEngine } = require('./GitWorkspaceEngine');
 
 class SwarmEngine extends EventEmitter {
   constructor(options = {}) {
@@ -13,6 +14,8 @@ class SwarmEngine extends EventEmitter {
     }
     this.activeSessionId = options.activeSessionId || null;
     this.llm = options.llmClient || new LiteLLMClient();
+    this.gitEngine = options.gitEngine || new GitWorkspaceEngine(options);
+    this.autoApplyGit = options.autoApplyGit !== undefined ? options.autoApplyGit : true;
     this.maxRetries = options.maxRetries || 3;
     this.autoApprove = options.autoApprove !== undefined ? options.autoApprove : true;
 
@@ -40,7 +43,7 @@ class SwarmEngine extends EventEmitter {
         icon: '📐',
         role: 'Architecture, Schemas, Component Contracts',
         model: 'swarm-architect',
-        status: 'idle', // idle | reasoning | writing | completed | error
+        status: 'idle',
         currentTask: null,
         thread: [],
         diffs: [],
@@ -49,8 +52,8 @@ class SwarmEngine extends EventEmitter {
         id: 'coder',
         name: 'Master Coder',
         icon: '💻',
-        role: 'High-Velocity Code Generation & Refactoring',
-        model: 'swarm-master',
+        role: 'High-Velocity Full-Stack Code Generation',
+        model: 'deepseek-flash', // DeepSeek V4.1 Flash (Superior for complex multi-file logic)
         status: 'idle',
         currentTask: null,
         thread: [],
@@ -59,7 +62,7 @@ class SwarmEngine extends EventEmitter {
       code_monkey: {
         id: 'code_monkey',
         name: 'Rapid Code Monkey',
-        icon: '🐒',
+        icon: '🐵',
         role: 'Instant Scratch Scripting & Rapid Prototyping',
         model: 'agent-code-monkey',
         status: 'idle',
@@ -72,7 +75,7 @@ class SwarmEngine extends EventEmitter {
         name: 'Database Engineer',
         icon: '💾',
         role: 'Postgres Schemas, Migrations & Query Optimization',
-        model: 'agent-db-engineer',
+        model: 'agent-code-monkey', // Groq GPT-OSS 120B (High-speed SQL, DDL & migrations)
         status: 'idle',
         currentTask: null,
         thread: [],
@@ -93,7 +96,7 @@ class SwarmEngine extends EventEmitter {
         id: 'evaluator',
         name: 'Evaluator / Critic',
         icon: '⚖️',
-        role: 'Closed-Loop Evaluator-Optimizer & Test Analysis',
+        role: 'Closed-Loop Evaluator & Quality Critic',
         model: 'agent-qa-engineer',
         status: 'idle',
         currentTask: null,
@@ -105,7 +108,7 @@ class SwarmEngine extends EventEmitter {
         name: 'Test Runner',
         icon: '🧪',
         role: 'Automated Test Suite & Regression Verification',
-        model: 'system-runner',
+        model: 'agent-qa-engineer',
         status: 'idle',
         currentTask: null,
         thread: [],
@@ -130,6 +133,8 @@ class SwarmEngine extends EventEmitter {
       subagents: this.subagents,
       tasks: this.tasks,
       currentTaskId: this.currentTaskId,
+      autoApplyGit: this.autoApplyGit,
+      workspace: this.gitEngine ? this.gitEngine.getWorkspaceInfo() : null,
       stats: {
         totalTasks: this.tasks.length,
         completedTasks: this.tasks.filter((t) => t.status === 'verified').length,
@@ -311,17 +316,22 @@ class SwarmEngine extends EventEmitter {
       {
         role: 'system',
         content: `You are the Manager Agent of an autonomous AI engineering swarm.
-Decompose the following user goal into 3-5 structured, concrete engineering tasks.
+Decompose the following user goal into 2-4 structured, IMPLEMENTATION-FOCUSED tasks.
+RULES:
+- Distribute tasks across specialized agents: assign Task 1 to 'architect' for interface/component contracts and architecture, Task 2 to 'coder' for production code implementation, and a closing task to 'evaluator' for closed-loop verification.
+- Every coder task description MUST instruct the agent to write actual source code files with file path comments on the first line of each code block (e.g. // src/mocks/handlers.js).
+- acceptanceCriteria must be concrete and verifiable (e.g. "File X exists with Y function", NOT "code is good").
 For each task specify:
-- title: concise task title
+- id: "task-1", "task-2", etc.
+- title: concise action-oriented title (e.g. "Architect UOM conversion schemas and interfaces")
 - assignedTo: 'architect' | 'coder' | 'code_monkey' | 'db' | 'pm' | 'evaluator' | 'tester'
-  (Roles: 'architect'=System Design/Contracts, 'coder'=Master Coder/Components, 'code_monkey'=Rapid Scripting, 'db'=Database/Migrations, 'pm'=Product/Sprint Backlog, 'evaluator'=QA Audit, 'tester'=Test Runner)
-- description: specific implementation instructions
-- acceptanceCriteria: verifiable pass condition
-Respond ONLY in valid JSON array format, like:
+- description: detailed implementation instructions including exact file paths to create
+- acceptanceCriteria: specific verifiable condition referencing file names or function names
+Respond ONLY in valid JSON array format:
 [
-  {"id": "task-1", "title": "Architecture Blueprint", "assignedTo": "architect", "description": "...", "acceptanceCriteria": "..."},
-  {"id": "task-2", "title": "Core Implementation", "assignedTo": "coder", "description": "...", "acceptanceCriteria": "..."}
+  {"id": "task-1", "title": "Architect interface contracts", "assignedTo": "architect", "description": "Define API contracts and schemas...", "acceptanceCriteria": "Complete interface definitions"},
+  {"id": "task-2", "title": "Implement core service", "assignedTo": "coder", "description": "Create src/... with...", "acceptanceCriteria": "File exists with full implementation"},
+  {"id": "task-3", "title": "Closed-loop verification", "assignedTo": "evaluator", "description": "Audit code quality...", "acceptanceCriteria": "All tests pass"}
 ]`,
       },
       { role: 'user', content: goalDescription },
@@ -341,27 +351,22 @@ Respond ONLY in valid JSON array format, like:
       }
 
       if (!parsedTasks || parsedTasks.length === 0) {
+        // Fallback: use the actual goal to create implementation-first tasks
+        const shortGoal = goalDescription.slice(0, 120);
         parsedTasks = [
           {
             id: 'task-1',
-            title: 'Design Architecture & Data Contracts',
-            assignedTo: 'architect',
-            description: `Draft architectural contracts for: ${goalDescription}`,
-            acceptanceCriteria: 'Component contracts and interfaces cleanly defined',
+            title: `Implement: ${shortGoal}`,
+            assignedTo: 'coder',
+            description: `IMPORTANT: Write complete production-ready source code files. Every code block MUST start with a file path comment on the FIRST LINE (e.g. // src/mocks/handlers.js). Write actual runnable code â€” no design docs, no stubs, no TODOs.\n\nGoal: ${goalDescription}`,
+            acceptanceCriteria: `Working source code files with file path comments. At least one complete .js/.ts/.jsx file with full implementation.`,
           },
           {
             id: 'task-2',
-            title: 'Implement Core Components',
-            assignedTo: 'coder',
-            description: `Write core code for: ${goalDescription}`,
-            acceptanceCriteria: 'Code builds and passes unit tests',
-          },
-          {
-            id: 'task-3',
-            title: 'Quality Verification & Acceptance Gate',
+            title: `Verify & Test: ${shortGoal}`,
             assignedTo: 'evaluator',
-            description: 'Run full regression tests and audit diffs against specs',
-            acceptanceCriteria: '100% test pass rate with zero regressions',
+            description: `Audit the code deliverable: (1) real code files with path comments present, (2) implementation complete not stubbed, (3) acceptance criteria met.\n\nOriginal Goal: ${goalDescription}`,
+            acceptanceCriteria: 'Code is complete, non-stub, contains actual file implementations.',
           },
         ];
       }
@@ -461,6 +466,13 @@ Acknowledge the instruction and explain how you will adapt your work. Keep respo
     architect.status = 'reasoning';
     this.manager.status = 'delegating';
     this.manager.currentThought = `Consulting System Architect (@architect) to unblock "${task.title}"...`;
+
+    const assignedAgent = this.subagents[task.assignedTo];
+    const prevAssignedStatus = assignedAgent?.status;
+    if (assignedAgent && assignedAgent !== architect) {
+      assignedAgent.status = 'consulting';
+      assignedAgent.currentTask = `Receiving architectural blueprint from System Architect (@architect)...`;
+    }
     this.notify('subagent-consulting', { consultant: 'architect', task: task.title });
 
     const prompt = [
@@ -485,9 +497,12 @@ Be concrete, precise, and direct so the Coder can implement it without compilati
     try {
       const res = await this.llm.chatCompletion({ model: architect.model, messages: prompt, maxTokens: 4096 });
       architect.status = prevStatus;
+      if (assignedAgent && assignedAgent !== architect) {
+        assignedAgent.status = prevAssignedStatus || 'reasoning';
+      }
       architect.thread.push({
         role: 'agent',
-        content: `### 📐 Unblocking Blueprint for "${task.title}"\n\n${res.content}`,
+        content: `### ðŸ“ Unblocking Blueprint for "${task.title}"\n\n${res.content}`,
         taskId: task.id,
         timestamp: Date.now(),
       });
@@ -501,6 +516,9 @@ Be concrete, precise, and direct so the Coder can implement it without compilati
       return res.content;
     } catch (e) {
       architect.status = prevStatus;
+      if (assignedAgent && assignedAgent !== architect) {
+        assignedAgent.status = prevAssignedStatus || 'reasoning';
+      }
       console.warn('[SwarmEngine] Failed consulting architect:', e.message);
       return '';
     }
@@ -513,10 +531,15 @@ Be concrete, precise, and direct so the Coder can implement it without compilati
     const task = this.tasks.find((t) => t.id === taskId);
     if (!task) throw new Error(`Task ${taskId} not found`);
 
+    const agent = this.subagents[task.assignedTo] || this.subagents.coder;
     this.currentTaskId = taskId;
     task.status = 'in_progress';
     this.manager.status = 'planning';
-    this.manager.currentThought = `👑 Manager taking over "${task.title}". Reviewing evaluator failure history and synthesizing complete, verified implementation...`;
+    this.manager.currentThought = `ðŸ‘‘ Manager taking over "${task.title}". Reviewing evaluator failure history and synthesizing complete, verified implementation...`;
+
+    // Explicitly update subagent state so user sees handover in UI
+    agent.status = 'delegated';
+    agent.currentTask = `Assisted by ðŸ‘‘ Manager (Autonomous Takeover in progress)`;
     this.notify('manager-takeover-started', { task });
 
     // Step 1: Consult Architect if not already done
@@ -562,14 +585,14 @@ Deliver the complete, authoritative, production-ready solution that directly eli
       timestamp: Date.now(),
     });
 
-    const agent = this.subagents[task.assignedTo] || this.subagents.coder;
     agent.thread.push({
       role: 'agent',
-      content: `### 👑 Manager Assisted Resolution\n\n${result.content}`,
+      content: `### ðŸ‘‘ Manager Assisted Resolution\n\n${result.content}`,
       taskId: task.id,
       timestamp: Date.now(),
     });
 
+    task.deliverable = result.content;
     task.logs.push(`[Manager] Autonomously took over and synthesized deliverable (${result.content.length} chars)`);
 
     // Step 3: Run Evaluator Gate on Manager's solution
@@ -577,10 +600,21 @@ Deliver the complete, authoritative, production-ready solution that directly eli
 
     if (evalResult.passed || evalResult.score >= 80) {
       task.status = 'verified';
+
+      // Auto-apply to git workspace if enabled
+      if (this.autoApplyGit && !task.gitCommit) {
+        try {
+          this.gitEngine.applyTaskChanges(task);
+          this.notify('task-git-committed', { task, gitCommit: task.gitCommit });
+        } catch (gitErr) {
+          console.warn('[SwarmEngine] Auto-apply git warning:', gitErr.message);
+        }
+      }
+
       agent.status = 'completed';
       agent.currentTask = null;
       this.manager.status = 'idle';
-      this.manager.currentThought = `👑 Manager successfully resolved and verified "${task.title}". Advancing sprint.`;
+      this.manager.currentThought = `ðŸ‘‘ Manager successfully resolved and verified "${task.title}". Advancing sprint.`;
       this.manager.decisions.push({
         timestamp: Date.now(),
         decision: `Manager took over and successfully verified task "${task.title}". Evaluator Score: ${evalResult.score}/100.`,
@@ -592,16 +626,16 @@ Deliver the complete, authoritative, production-ready solution that directly eli
       this.notify('task-completed', { task, evalResult });
       this.saveState();
       return { success: true, task, evalResult, managerTakeover: true };
-    } else {
-      // Manager executive override if score is viable
+    } else if (evalResult.score >= 70) {
+      // Manager executive override only if score is viable (>=70)
       task.status = 'verified';
       agent.status = 'completed';
       agent.currentTask = null;
       this.manager.status = 'idle';
-      this.manager.currentThought = `👑 Manager approved "${task.title}" with executive override following deep synthesis.`;
+      this.manager.currentThought = `ðŸ‘‘ Manager approved "${task.title}" with executive override (score: ${evalResult.score}/100).`;
       this.manager.decisions.push({
         timestamp: Date.now(),
-        decision: `Manager executive override approved task "${task.title}".`,
+        decision: `Manager executive override approved task "${task.title}" (score ${evalResult.score}/100).`,
       });
 
       const nextTask = this.tasks.find((t) => t.status === 'pending');
@@ -610,6 +644,14 @@ Deliver the complete, authoritative, production-ready solution that directly eli
       this.notify('task-completed', { task, evalResult });
       this.saveState();
       return { success: true, task, evalResult, managerTakeover: true };
+    } else {
+      task.status = 'failed';
+      agent.status = 'error';
+      this.manager.status = 'waiting_human';
+      this.manager.currentThought = `Manager takeover for "${task.title}" did not reach acceptance threshold (score ${evalResult?.score || 0}/100). Escalating.`;
+      this.notify('task-escalated', { task, evalResult });
+      this.saveState();
+      return { success: false, task, evalResult, escalated: true };
     }
   }
 
@@ -645,26 +687,68 @@ Deliver the complete, authoritative, production-ready solution that directly eli
       })
       .join('\n\n');
 
+    
+    // GROUND TRUTH REPOSITORY CONTEXT INGESTION:
+    // Automatically inspect workspace for files mentioned in task to eliminate "File Blindness"
+    let workspaceFileContext = '';
+    try {
+      const workspaceDir = this.gitEngine?.workspaceDir || 'C:/Users/karan/OneDrive/Desktop/Project/SIMS';
+      const textToScan = `${task.title} ${task.description} ${task.acceptanceCriteria}`;
+      const pathMatches = textToScan.match(/(?:[a-zA-Z0-9_\-\.\/]+)\.(?:java|js|jsx|ts|tsx|json|ya?ml|css)/g) || [];
+      const uniquePaths = [...new Set(pathMatches)];
+      let injectedFiles = 0;
+
+      for (const relPath of uniquePaths) {
+        if (injectedFiles >= 3) break;
+        const candidates = [
+          path.resolve(workspaceDir, relPath),
+          path.resolve(workspaceDir, 'frontend', relPath),
+          path.resolve(workspaceDir, 'frontend/src', relPath),
+          path.resolve(workspaceDir, 'backend', relPath),
+          path.resolve(workspaceDir, 'backend/src/main/java', relPath),
+          path.resolve(workspaceDir, 'ai-service', relPath),
+        ];
+
+        for (const cand of candidates) {
+          if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+            const fileContent = fs.readFileSync(cand, 'utf8');
+            const snippet = fileContent.length > 8000
+              ? fileContent.slice(0, 8000) + '\n// ... [remaining content truncated for prompt limits] ...'
+              : fileContent;
+            workspaceFileContext += `\n📁 EXISTING GROUND-TRUTH REPOSITORY FILE: ${path.relative(workspaceDir, cand).replace(/\\/g, '/')}\n\`\`\`\n${snippet}\n\`\`\`\n`;
+            injectedFiles++;
+            break;
+          }
+        }
+      }
+    } catch (scanErr) {
+      console.warn('[SwarmEngine] Workspace file ingestion warning:', scanErr.message);
+    }
+
     let systemInstructions = `You are ${agent.name}. Execute the assigned task:
 Title: ${task.title}
 Instructions: ${task.description}
 Acceptance Criteria: ${task.acceptanceCriteria}
 `;
 
+    if (typeof workspaceFileContext !== 'undefined' && workspaceFileContext) {
+      systemInstructions += `\n${workspaceFileContext}\n`;
+    }
+
     if (priorContext) {
       systemInstructions += `\nPrior Verified Project Context & Specifications:\n${priorContext}\n`;
     }
 
     if (task.architectGuidance) {
-      systemInstructions += `\n📐 System Architect Guidance & Blueprint:\n${task.architectGuidance}\n`;
+      systemInstructions += `\nðŸ“ System Architect Guidance & Blueprint:\n${task.architectGuidance}\n`;
     }
 
     if (task.managerGuidance) {
-      systemInstructions += `\n👑 Manager Strategic Directives:\n${task.managerGuidance}\n`;
+      systemInstructions += `\nðŸ‘‘ Manager Strategic Directives:\n${task.managerGuidance}\n`;
     }
 
     if (task.errorHistory && task.errorHistory.length > 0) {
-      systemInstructions += `\n⚠️ Previous Evaluation Failures To Fix:\n${task.errorHistory.map((e, idx) => `Defect ${idx + 1}: ${e}`).join('\n\n')}\n`;
+      systemInstructions += `\nâš ï¸ Previous Evaluation Failures To Fix:\n${task.errorHistory.map((e, idx) => `Defect ${idx + 1}: ${e}`).join('\n\n')}\n`;
     }
 
     systemInstructions += `\nProvide your complete technical solution. Ensure all imports and types are explicitly declared, all unit tests are robust and non-flaky, and finish all code without truncation.`;
@@ -684,6 +768,7 @@ Acceptance Criteria: ${task.acceptanceCriteria}
       taskId: task.id,
       timestamp: Date.now(),
     });
+    task.deliverable = execResult.content;
     task.logs.push(`[${agent.name}] Output generated (${execResult.content.length} chars)`);
 
     // Step 2: The Evaluator-Optimizer Closed Loop
@@ -691,6 +776,17 @@ Acceptance Criteria: ${task.acceptanceCriteria}
 
     if (evalResult.passed) {
       task.status = 'verified';
+
+      // Auto-apply to git workspace if enabled
+      if (this.autoApplyGit && !task.gitCommit) {
+        try {
+          this.gitEngine.applyTaskChanges(task);
+          this.notify('task-git-committed', { task, gitCommit: task.gitCommit });
+        } catch (gitErr) {
+          console.warn('[SwarmEngine] Auto-apply git warning:', gitErr.message);
+        }
+      }
+
       agent.status = 'completed';
       agent.currentTask = null;
       this.manager.status = 'idle';
@@ -776,7 +872,8 @@ Respond strictly in JSON format:
 
     try {
       const res = await this.llm.chatCompletion({ model: evaluator.model, messages: prompt });
-      let parsed = { passed: true, score: 95, diagnosticFeedback: 'Meets criteria.' };
+      // Default to FAILED â€” only pass if the LLM explicitly returns passed:true
+      let parsed = { passed: false, score: 0, diagnosticFeedback: 'Evaluator did not return a valid response.' };
 
       try {
         const jsonMatch = res.content.match(/\{[\s\S]*\}/);
@@ -793,7 +890,8 @@ Respond strictly in JSON format:
       return parsed;
     } catch (err) {
       evaluator.status = 'idle';
-      return { passed: true, score: 85, diagnosticFeedback: 'Accepted with heuristic check.' };
+      // Evaluator errored â€” treat as failure so the coder retries
+      return { passed: false, score: 0, diagnosticFeedback: 'Evaluator call failed. Code output must be retried with explicit file content.' };
     }
   }
 
@@ -809,7 +907,7 @@ Respond strictly in JSON format:
       if (task.status === 'verified') continue;
 
       const result = await this.executeTask(task.id);
-      if (!result.success && result.escalated) {
+      if (result && !result.success && result.escalated) {
         this.isRunning = false;
         break;
       }
@@ -830,6 +928,99 @@ Respond strictly in JSON format:
     this.autoApprove = Boolean(val);
     this.notify('auto-approve-changed', { autoApprove: this.autoApprove });
   }
+
+  /* ------------------------------------------------------------------ *
+   *  Workspace & Git Operations (Aider & Git Commit Pipeline)
+   * ------------------------------------------------------------------ */
+  getWorkspaceInfo() {
+    return this.gitEngine.getWorkspaceInfo();
+  }
+
+  setWorkspaceDir(dir) {
+    const res = this.gitEngine.setWorkspace(dir);
+    this.notify('workspace-changed', res);
+    this.saveState();
+    return res;
+  }
+
+  setAutoApplyGit(val) {
+    this.autoApplyGit = Boolean(val);
+    this.notify('auto-apply-git-changed', { autoApplyGit: this.autoApplyGit });
+  }
+
+  async applyTaskToWorkspace(taskId) {
+    const task = this.tasks.find((t) => t.id === taskId);
+    if (!task) throw new Error(`Task ${taskId} not found`);
+
+    this.manager.currentThought = `Applying verified changes for "${task.title}" to git workspace...`;
+    const res = this.gitEngine.applyTaskChanges(task);
+    this.manager.decisions.push({
+      timestamp: Date.now(),
+      decision: `Committed task "${task.title}" to git (${task.gitCommit.shortHash}): ${task.gitCommit.message}`,
+    });
+    this.notify('task-git-committed', { task, gitCommit: task.gitCommit });
+    this.saveState();
+    return res;
+  }
+
+  async runAiderOnTask(taskId, options = {}) {
+    const task = this.tasks.find((t) => t.id === taskId);
+    if (!task) throw new Error(`Task ${taskId} not found`);
+
+    const agent = this.subagents[task.assignedTo] || this.subagents.coder;
+    agent.status = 'writing';
+    agent.currentTask = `Running aider pair programmer on "${task.title}"...`;
+    this.manager.currentThought = `Executing aider CLI in workspace for task "${task.title}"...`;
+    this.notify('subagent-status', { agent: task.assignedTo, status: 'writing' });
+
+    try {
+      const res = await this.gitEngine.runAider(task, options);
+      agent.status = 'completed';
+      agent.currentTask = null;
+      this.manager.currentThought = `Aider successfully completed and committed "${task.title}".`;
+      this.manager.decisions.push({
+        timestamp: Date.now(),
+        decision: `Aider committed task "${task.title}" (${task.gitCommit.shortHash}).`,
+      });
+      this.notify('task-git-committed', { task, gitCommit: task.gitCommit });
+      this.saveState();
+      return res;
+    } catch (err) {
+      agent.status = 'idle';
+      this.manager.currentThought = `Aider execution failed: ${err.message}`;
+      throw err;
+    }
+  }
+
+  revertTaskCommit(taskId) {
+    const task = this.tasks.find((t) => t.id === taskId);
+    if (!task) throw new Error(`Task ${taskId} not found`);
+    if (!task.gitCommit || !task.gitCommit.hash) {
+      throw new Error(`Task "${task.title}" has no git commit to revert.`);
+    }
+
+    const res = this.gitEngine.revertCommit(task.gitCommit.hash);
+    task.gitCommit.reverted = true;
+    task.gitCommit.revertHash = res.revertCommitHash;
+    this.manager.decisions.push({
+      timestamp: Date.now(),
+      decision: `Reverted commit ${task.gitCommit.shortHash} for task "${task.title}".`,
+    });
+    this.notify('task-git-reverted', { task, result: res });
+    this.saveState();
+    return res;
+  }
+
+  getTaskDiff(taskId) {
+    const task = this.tasks.find((t) => t.id === taskId);
+    if (!task) throw new Error(`Task ${taskId} not found`);
+    if (!task.gitCommit || !task.gitCommit.hash) {
+      throw new Error(`Task "${task.title}" has no associated git commit.`);
+    }
+    return this.gitEngine.getCommitDiff(task.gitCommit.hash);
+  }
 }
 
 module.exports = { SwarmEngine };
+
+

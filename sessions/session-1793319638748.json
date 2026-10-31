@@ -1,0 +1,118 @@
+{
+  "id": "session-1793319638748",
+  "goal": "Googlebook OS: run ash-chrome (Chromium linux-chromeos build) as the primary desktop session on Bazzite. DONE: ash renders the real ChromeOS desktop with shelf and wallpaper; Exo hosts external Wayland clients; host .desktop apps publish into the Ash launcher; Exo windows dock on the shelf; end-to-end launch from the launcher works. IN PROGRESS: real per-app icons. TODO: X11 WM_CLASS mapping for Steam/pre-XWayland apps; org.freedesktop.Notifications to message_center bridge; DRM/ozone hardware test on hybrid AMD iGPU + RTX 4060; packaging ash into the OCI image; Waydroid integration.",
+  "createdAt": 1793319639281,
+  "updatedAt": 1793319639281,
+  "state": {
+    "activeSessionId": "session-1793319638748",
+    "activeGoal": "Googlebook OS: run ash-chrome (Chromium linux-chromeos build) as the primary desktop session on Bazzite. DONE: ash renders the real ChromeOS desktop with shelf and wallpaper; Exo hosts external Wayland clients; host .desktop apps publish into the Ash launcher; Exo windows dock on the shelf; end-to-end launch from the launcher works. IN PROGRESS: real per-app icons. TODO: X11 WM_CLASS mapping for Steam/pre-XWayland apps; org.freedesktop.Notifications to message_center bridge; DRM/ozone hardware test on hybrid AMD iGPU + RTX 4060; packaging ash into the OCI image; Waydroid integration.",
+    "isRunning": false,
+    "autoApprove": true,
+    "maxRetries": 3,
+    "manager": {
+      "id": "manager",
+      "name": "Manager (Antigravity)",
+      "role": "Planner, Evaluator & Swarm Director",
+      "status": "idle",
+      "currentThought": "Session started for goal: \"Googlebook OS: run ash-chrome (Chromium linux-chromeos build) as the primary desktop session on Bazzite. DONE: ash renders the real ChromeOS desktop with shelf and wallpaper; Exo hosts external Wayland clients; host .desktop apps publish into the Ash launcher; Exo windows dock on the shelf; end-to-end launch from the launcher works. IN PROGRESS: real per-app icons. TODO: X11 WM_CLASS mapping for Steam/pre-XWayland apps; org.freedesktop.Notifications to message_center bridge; DRM/ozone hardware test on hybrid AMD iGPU + RTX 4060; packaging ash into the OCI image; Waydroid integration.\". Ready for decomposition.",
+      "decisions": [],
+      "thread": []
+    },
+    "subagents": {
+      "architect": {
+        "id": "architect",
+        "name": "System Architect",
+        "icon": "📐",
+        "role": "Architecture, Schemas, Component Contracts",
+        "model": "swarm-architect",
+        "status": "idle",
+        "currentTask": null,
+        "thread": [],
+        "diffs": []
+      },
+      "coder": {
+        "id": "coder",
+        "name": "Master Coder",
+        "icon": "💻",
+        "role": "High-Velocity Full-Stack Code Generation",
+        "model": "deepseek-flash",
+        "status": "idle",
+        "currentTask": null,
+        "thread": [],
+        "diffs": []
+      },
+      "code_monkey": {
+        "id": "code_monkey",
+        "name": "Rapid Code Monkey",
+        "icon": "🐵",
+        "role": "Instant Scratch Scripting & Rapid Prototyping",
+        "model": "agent-code-monkey",
+        "status": "idle",
+        "currentTask": null,
+        "thread": [],
+        "diffs": []
+      },
+      "db": {
+        "id": "db",
+        "name": "Database Engineer",
+        "icon": "💾",
+        "role": "Postgres Schemas, Migrations & Query Optimization",
+        "model": "agent-code-monkey",
+        "status": "idle",
+        "currentTask": null,
+        "thread": [],
+        "diffs": []
+      },
+      "pm": {
+        "id": "pm",
+        "name": "Project Manager",
+        "icon": "📋",
+        "role": "Sprint Planning, User Stories & Backlog Grooming",
+        "model": "agent-project-manager",
+        "status": "idle",
+        "currentTask": null,
+        "thread": [],
+        "diffs": []
+      },
+      "evaluator": {
+        "id": "evaluator",
+        "name": "Evaluator / Critic",
+        "icon": "⚖️",
+        "role": "Closed-Loop Evaluator & Quality Critic",
+        "model": "agent-qa-engineer",
+        "status": "idle",
+        "currentTask": null,
+        "thread": [],
+        "evaluations": []
+      },
+      "tester": {
+        "id": "tester",
+        "name": "Test Runner",
+        "icon": "🧪",
+        "role": "Automated Test Suite & Regression Verification",
+        "model": "agent-qa-engineer",
+        "status": "idle",
+        "currentTask": null,
+        "thread": [],
+        "testRuns": []
+      }
+    },
+    "tasks": [],
+    "currentTaskId": null,
+    "autoApplyGit": true,
+    "workspace": {
+      "workspaceDir": "C:/Users/karan/OneDrive/Desktop/Project/SIMS",
+      "isGit": true,
+      "branch": "master",
+      "clean": true,
+      "uncommittedFiles": 0,
+      "latestCommit": "2a6ad29 feat: complete Clover POS integration with REST pull, sandbox simulation, and webhook security permit"
+    },
+    "stats": {
+      "totalTasks": 0,
+      "completedTasks": 0,
+      "inProgressTasks": 0,
+      "failedTasks": 0
+    }
+  }
+}

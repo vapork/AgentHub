@@ -222,6 +222,49 @@ app.post('/api/swarm/steer', express.json(), async (req, res) => {
   }
 });
 
+// --- WORKSPACE & GIT PIPELINE API ---
+app.get('/api/swarm/workspace', (req, res) => res.json(swarm.getWorkspaceInfo()));
+app.post('/api/swarm/workspace', express.json(), (req, res) => {
+  try {
+    const info = swarm.setWorkspaceDir(req.body.workspaceDir);
+    res.json({ success: true, info });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post('/api/swarm/tasks/:taskId/apply', express.json(), async (req, res) => {
+  try {
+    const result = await swarm.applyTaskToWorkspace(req.params.taskId);
+    res.json({ success: true, result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post('/api/swarm/tasks/:taskId/aider', express.json(), async (req, res) => {
+  try {
+    const result = await swarm.runAiderOnTask(req.params.taskId, req.body);
+    res.json({ success: true, result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post('/api/swarm/tasks/:taskId/revert', express.json(), (req, res) => {
+  try {
+    const result = swarm.revertTaskCommit(req.params.taskId);
+    res.json({ success: true, result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.get('/api/swarm/tasks/:taskId/diff', (req, res) => {
+  try {
+    const diff = swarm.getTaskDiff(req.params.taskId);
+    res.json(diff);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 const server = http.createServer(app);
 
 // Attach WebSocket server
@@ -375,6 +418,35 @@ wss.on('connection', (ws) => {
         }
       } else if (msg.type === 'swarm-list-sessions') {
         send({ type: 'swarm-sessions-list', sessions: swarm.listSessions() });
+      } else if (msg.type === 'swarm-apply-task') {
+        swarm.applyTaskToWorkspace(msg.taskId)
+          .then(res => send({ type: 'swarm-task-applied', taskId: msg.taskId, result: res }))
+          .catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-aider-task') {
+        swarm.runAiderOnTask(msg.taskId, msg.options || {})
+          .then(res => send({ type: 'swarm-task-applied', taskId: msg.taskId, result: res }))
+          .catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-revert-task') {
+        try {
+          const res = swarm.revertTaskCommit(msg.taskId);
+          send({ type: 'swarm-task-reverted', taskId: msg.taskId, result: res });
+        } catch (e) {
+          send({ type: 'error', message: e.message });
+        }
+      } else if (msg.type === 'swarm-get-diff') {
+        try {
+          const diff = swarm.getTaskDiff(msg.taskId);
+          send({ type: 'swarm-diff-result', taskId: msg.taskId, diff });
+        } catch (e) {
+          send({ type: 'error', message: e.message });
+        }
+      } else if (msg.type === 'swarm-set-workspace') {
+        try {
+          const info = swarm.setWorkspaceDir(msg.workspaceDir);
+          send({ type: 'swarm-workspace-updated', info });
+        } catch (e) {
+          send({ type: 'error', message: e.message });
+        }
       }
     } catch (err) {
       send({ type: 'error', message: `Invalid message format: ${err.message}` });

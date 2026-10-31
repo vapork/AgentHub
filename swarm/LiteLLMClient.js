@@ -5,17 +5,17 @@
  */
 
 const FALLBACK_CHAINS = {
-  'swarm-master': ['swarm-architect', 'agent-db-engineer', 'agent-code-monkey'],
-  'agent-code-monkey': ['swarm-master', 'agent-db-engineer'],
+  'swarm-master': ['deepseek-flash', 'swarm-architect', 'agent-db-engineer', 'agent-code-monkey'],
+  'agent-code-monkey': ['deepseek-flash', 'swarm-master', 'agent-db-engineer'],
   'swarm-architect': ['swarm-master', 'agent-project-manager', 'agent-db-engineer'],
   'agent-db-engineer': ['swarm-architect', 'swarm-master'],
   'agent-project-manager': ['swarm-architect', 'agent-db-engineer'],
-  'agent-qa-engineer': ['agent-project-manager', 'agent-db-engineer', 'swarm-architect'],
+  'agent-qa-engineer': ['deepseek-flash', 'agent-project-manager', 'agent-db-engineer', 'swarm-architect'],
 };
 
 class LiteLLMClient {
   constructor(options = {}) {
-    this.apiBase = options.apiBase || process.env.LITELLM_API_BASE || 'http://localhost:5588/v1';
+    this.apiBase = options.apiBase || process.env.LITELLM_API_BASE || 'http://127.0.0.1:4000/v1';
     this.apiKey = options.apiKey || process.env.OPENAI_API_KEY || 'dummy';
     this.defaultModel = options.defaultModel || 'swarm-master';
   }
@@ -49,7 +49,8 @@ class LiteLLMClient {
         }
 
         const data = await response.json();
-        const content = data.choices?.[0]?.message?.content || '';
+        const message = data.choices?.[0]?.message;
+        const content = (message?.content || message?.reasoning_content || message?.reasoning || '').trim();
         if (content) {
           if (targetModel !== primaryModel) {
             console.log(`[LiteLLMClient] Resilient Failover: '${primaryModel}' recovered by '${targetModel}'`);
@@ -66,7 +67,48 @@ class LiteLLMClient {
       }
     }
 
-    console.warn(`[LiteLLMClient] All candidate models failed. Last error: ${lastError?.message}. Using structured synthesis fallback.`);
+    console.warn(`[LiteLLMClient] Local proxy failed (${lastError?.message}). Falling back to direct OpenRouter DeepSeek Flash upstream...`);
+    try {
+      const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
+      const openRouterKey = process.env.OPENROUTER_API_KEY || '';
+      if (!openRouterKey) {
+        throw new Error('OPENROUTER_API_KEY is not configured for direct fallback.');
+      }
+      const response = await fetch(openRouterUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openRouterKey}`,
+        },
+        body: JSON.stringify({
+          model: 'deepseek/deepseek-v4.1-flash-1017',
+          messages,
+          temperature,
+          max_tokens: maxTokens,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const message = data.choices?.[0]?.message;
+        const content = (message?.content || message?.reasoning_content || message?.reasoning || '').trim();
+        if (content) {
+          console.log(`[LiteLLMClient] Direct OpenRouter deepseek/deepseek-v4.1-flash-1017 answered successfully.`);
+          return {
+            content,
+            model: 'deepseek/deepseek-v4.1-flash-1017',
+            usage: data.usage,
+          };
+        }
+      } else {
+        const errorText = await response.text();
+        console.warn(`[LiteLLMClient] OpenRouter fallback status ${response.status}: ${errorText}`);
+      }
+    } catch (orErr) {
+      console.warn(`[LiteLLMClient] OpenRouter fallback failed: ${orErr.message}`);
+    }
+
+    console.warn(`[LiteLLMClient] All candidate models and OpenRouter failed. Last error: ${lastError?.message}. Using structured synthesis fallback.`);
     return {
       content: `[Fallback reasoning for ${primaryModel}]: Analyzed task instructions. Proceeding with structured steps.`,
       model: primaryModel,
@@ -86,3 +128,5 @@ class LiteLLMClient {
 }
 
 module.exports = { LiteLLMClient };
+
+

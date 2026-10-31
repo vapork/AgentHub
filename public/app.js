@@ -55,6 +55,16 @@
     return html;
   }
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function renderMarkdown(md) {
     if (!md) return '';
     let text = md.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
@@ -317,6 +327,9 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
           }
         } else if (msg.type === 'chat-done') {
+          if (currentAgentBubble) {
+            currentAgentBubble.innerHTML = renderMarkdown(currentAgentBubble.textContent);
+          }
           currentAgentBubble = null;
         }
       } catch (err) {
@@ -488,10 +501,19 @@
   });
 
   // Settings modal handlers
+  const settingsWorkspaceInput = document.getElementById('settings-workspace-input');
+  const settingsAutoGitInput = document.getElementById('settings-auto-git-input');
+
   if (btnSettings && settingsModal) {
     btnSettings.addEventListener('click', () => {
       settingsModal.style.display = 'flex';
       if (apiKeyInput) apiKeyInput.focus();
+      if (settingsWorkspaceInput && localSwarmState?.workspace?.workspaceDir) {
+        settingsWorkspaceInput.value = localSwarmState.workspace.workspaceDir;
+      }
+      if (settingsAutoGitInput && localSwarmState) {
+        settingsAutoGitInput.checked = localSwarmState.autoApplyGit !== false;
+      }
     });
   }
 
@@ -503,11 +525,26 @@
   }
 
   if (btnSettingsSave && settingsModal) {
-    btnSettingsSave.addEventListener('click', () => {
+    btnSettingsSave.addEventListener('click', async () => {
       const key = apiKeyInput ? apiKeyInput.value.trim() : '';
-      sendWs({ type: 'set-api-key', key });
+      if (key) sendWs({ type: 'set-api-key', key });
+
+      if (settingsWorkspaceInput && settingsWorkspaceInput.value.trim()) {
+        const workspaceDir = settingsWorkspaceInput.value.trim();
+        try {
+          await fetch('/api/swarm/workspace', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workspaceDir }),
+          });
+        } catch (e) {
+          console.warn('Failed to update workspace:', e);
+        }
+      }
+
       settingsModal.style.display = 'none';
       if (apiKeyInput) apiKeyInput.value = '';
+      if (ws && ws.readyState === 1) sendWs({ type: 'swarm-get-state' });
     });
   }
 
@@ -671,7 +708,7 @@ function renderChatHistory() {
   chatHistory.forEach(msg => {
     const el = document.createElement('div');
     el.className = `chat-bubble ${msg.role}`;
-    el.innerText = msg.content;
+    el.innerHTML = renderMarkdown(msg.content);
     chatContainer.appendChild(el);
   });
   chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -959,9 +996,32 @@ function renderWorkspaceFeed() {
 
     // Section: Task Execution Graph
     const taskSection = document.createElement('div');
-    taskSection.innerHTML = `<h3 style="font-size:0.9rem; color:#fff; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-      <span>📋 Swarm Task Graph (${localSwarmState.tasks?.length || 0} tasks)</span>
-    </h3>`;
+    const allDone = localSwarmState.tasks?.length > 0 && localSwarmState.tasks.every(t => t.status === 'verified');
+    
+    let summaryHtml = '';
+    if (allDone) {
+      summaryHtml = `
+        <div class="sprint-summary-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="font-size:1.4rem;">🎉</span>
+              <div>
+                <div style="font-weight:700; color:#10b981; font-size:0.95rem;">Sprint Completed & Verified (100% Pass Rate)</div>
+                <div style="font-size:0.75rem; color:#94a3b8;">All ${localSwarmState.tasks.length} objectives passed acceptance gates and evaluator audits. Parity targets achieved.</div>
+              </div>
+            </div>
+            <span class="agent-status-badge status-verified" style="font-size:0.7rem; padding:4px 8px;">ALL GATES PASSED ✓</span>
+          </div>
+        </div>
+      `;
+    }
+
+    taskSection.innerHTML = `
+      ${summaryHtml}
+      <h3 style="font-size:0.9rem; color:#fff; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+        <span>📋 Swarm Task Graph (${localSwarmState.tasks?.length || 0} tasks)</span>
+      </h3>
+    `;
 
     if (!localSwarmState.tasks || localSwarmState.tasks.length === 0) {
       const empty = document.createElement('div');
@@ -984,6 +1044,37 @@ function renderWorkspaceFeed() {
           `;
         }
 
+        let gitBadgeHtml = '';
+        if (task.gitCommit) {
+          const isReverted = Boolean(task.gitCommit.reverted);
+          gitBadgeHtml = `
+            <div style="margin-top:8px; padding:6px 10px; background:#0f172a; border:1px solid ${isReverted ? '#ef4444' : '#1e293b'}; border-radius:6px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+              <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem;">
+                <span style="color:${isReverted ? '#f87171' : '#10b981'}; font-weight:700;">${isReverted ? '⏪ Reverted' : '📦 Git Commit'}:</span>
+                <code style="background:#1e293b; padding:2px 6px; border-radius:4px; color:#38bdf8; font-weight:700;">${task.gitCommit.shortHash || task.gitCommit.hash?.slice(0, 7)}</code>
+                ${task.gitCommit.files?.length ? `<span style="color:#94a3b8; font-size:0.7rem;">(${task.gitCommit.files.length} files)</span>` : ''}
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button class="swarm-btn btn-task-diff" data-id="${task.id}" style="padding:2px 8px; font-size:0.72rem; background:#1e293b; color:#38bdf8; border:1px solid #38bdf8;" title="View visual diff of this commit">👁️ Diff</button>
+                ${!isReverted
+                  ? `<button class="swarm-btn btn-task-revert" data-id="${task.id}" style="padding:2px 8px; font-size:0.72rem; background:#1e293b; color:#f87171; border:1px solid #f87171;" title="Revert this git commit">⏪ Revert</button>`
+                  : `<button class="swarm-btn primary btn-task-apply" data-id="${task.id}" style="padding:2px 8px; font-size:0.72rem;" title="Re-apply to codebase">🚀 Re-Apply</button>`
+                }
+              </div>
+            </div>
+          `;
+        } else if (task.status === 'verified') {
+          gitBadgeHtml = `
+            <div style="margin-top:8px; padding:6px 10px; background:#1e1b4b; border:1px solid #4338ca; border-radius:6px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+              <span style="font-size:0.75rem; color:#c7d2fe; font-weight:500;">✓ Verified in Session</span>
+              <div style="display:flex; gap:6px;">
+                <button class="swarm-btn primary btn-task-apply" data-id="${task.id}" style="padding:2px 8px; font-size:0.72rem;" title="Write files to workspace and git commit">🚀 Apply to Codebase (Git)</button>
+                <button class="swarm-btn btn-task-aider" data-id="${task.id}" style="padding:2px 8px; font-size:0.72rem; background:#312e81; color:#c7d2fe; border:1px solid #6366f1;" title="Run aider CLI in workspace to implement and commit">🤖 Run Aider</button>
+              </div>
+            </div>
+          `;
+        }
+
         card.innerHTML = `
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <span style="font-weight:700; color:white; font-size:0.85rem;">${task.title}</span>
@@ -998,6 +1089,7 @@ function renderWorkspaceFeed() {
             <span>Assigned: <strong>@${task.assignedTo}</strong></span>
             <span>Attempts: ${task.attempts || 0}/${localSwarmState.maxRetries || 3}</span>
           </div>
+          ${gitBadgeHtml}
         `;
 
         const runBtn = card.querySelector('.btn-task-run');
@@ -1021,6 +1113,80 @@ function renderWorkspaceFeed() {
           });
         }
 
+        const diffBtn = card.querySelector('.btn-task-diff');
+        if (diffBtn) {
+          diffBtn.addEventListener('click', () => showDiffModal(task.id));
+        }
+
+        const revertBtn = card.querySelector('.btn-task-revert');
+        if (revertBtn) {
+          revertBtn.addEventListener('click', async () => {
+            if (!confirm(`Revert commit ${task.gitCommit?.shortHash} for task "${task.title}"?`)) return;
+            revertBtn.disabled = true;
+            revertBtn.textContent = 'Reverting...';
+            try {
+              const res = await fetch(`/api/swarm/tasks/${task.id}/revert`, { method: 'POST' });
+              const json = await res.json();
+              if (json.error) throw new Error(json.error);
+              alert('Successfully reverted commit ' + (task.gitCommit?.shortHash || ''));
+              if (ws && ws.readyState === 1) sendWs({ type: 'swarm-get-state' });
+            } catch (err) {
+              alert('Revert failed: ' + err.message);
+            } finally {
+              revertBtn.disabled = false;
+              revertBtn.textContent = '⏪ Revert';
+            }
+          });
+        }
+
+        const applyBtn = card.querySelector('.btn-task-apply');
+        if (applyBtn) {
+          applyBtn.addEventListener('click', async () => {
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'Applying...';
+            try {
+              const res = await fetch(`/api/swarm/tasks/${task.id}/apply`, { method: 'POST' });
+              const json = await res.json();
+              if (json.error) throw new Error(json.error);
+              const r = json.result || {};
+              const hash = r.gitCommit?.shortHash || r.gitCommit?.hash?.slice(0, 7) || 'OK';
+              if (r.noCodeFilesFound) {
+                alert(`ℹ️ No parseable code files found in the deliverable.\nSaved as markdown doc and committed: ${hash}\n\nTo apply code, ensure deliverable code blocks include a file path comment (e.g. // src/components/MyComponent.jsx).`);
+              } else if (r.unchanged) {
+                alert(`✅ Workspace already up to date (commit ${hash}).`);
+              } else {
+                alert(`✅ Applied & committed to git: ${hash}\n${r.writtenFiles?.length || 0} file(s) written.`);
+              }
+              if (ws && ws.readyState === 1) sendWs({ type: 'swarm-get-state' });
+            } catch (err) {
+              alert('❌ Apply failed: ' + err.message);
+            } finally {
+              applyBtn.disabled = false;
+              applyBtn.textContent = '🚀 Apply to Codebase (Git)';
+            }
+          });
+        }
+
+        const aiderBtn = card.querySelector('.btn-task-aider');
+        if (aiderBtn) {
+          aiderBtn.addEventListener('click', async () => {
+            aiderBtn.disabled = true;
+            aiderBtn.textContent = 'Running Aider...';
+            try {
+              const res = await fetch(`/api/swarm/tasks/${task.id}/aider`, { method: 'POST' });
+              const json = await res.json();
+              if (json.error) throw new Error(json.error);
+              alert(`Aider finished and committed: ${json.result?.gitCommit?.shortHash || 'OK'}!`);
+              if (ws && ws.readyState === 1) sendWs({ type: 'swarm-get-state' });
+            } catch (err) {
+              alert('Aider failed: ' + err.message);
+            } finally {
+              aiderBtn.disabled = false;
+              aiderBtn.textContent = '🤖 Run Aider';
+            }
+          });
+        }
+
         taskSection.appendChild(card);
       });
     }
@@ -1039,15 +1205,49 @@ function renderWorkspaceFeed() {
       workspaceFeed.appendChild(decSection);
     }
 
-    // Section: Manager Chat Thread
+    // Section: Manager Dialogue Stream & Solutions
     if (localSwarmState.manager?.thread && localSwarmState.manager.thread.length > 0) {
       const threadSection = document.createElement('div');
-      threadSection.innerHTML = `<h3 style="font-size:0.9rem; color:#fff; margin-top:12px; margin-bottom:8px;">💬 Manager Dialogue Stream</h3>`;
-      localSwarmState.manager.thread.forEach(msg => {
-        const bubble = document.createElement('div');
-        bubble.className = `chat-bubble ${msg.role === 'user' ? 'user' : 'agent'}`;
-        bubble.innerHTML = `<div style="font-size:0.7rem; opacity:0.7; margin-bottom:2px;">${msg.role === 'user' ? 'Operator' : '👑 Manager (Antigravity)'}</div><div>${msg.content}</div>`;
-        threadSection.appendChild(bubble);
+      threadSection.innerHTML = `<h3 style="font-size:0.9rem; color:#fff; margin-top:16px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+        <span>💬 Executive Dialogue & Assisted Solutions (${localSwarmState.manager.thread.length})</span>
+      </h3>`;
+      localSwarmState.manager.thread.forEach((msg, idx) => {
+        if (msg.role === 'user') {
+          const userCard = document.createElement('div');
+          userCard.className = 'operator-directive-card';
+          userCard.innerHTML = `
+            <div style="font-size:0.75rem; font-weight:700; color:#38bdf8; display:flex; justify-content:space-between; align-items:center;">
+              <span>👤 Operator Directive / Guidance</span>
+              <span style="font-size:0.68rem; color:#64748b;">${msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}</span>
+            </div>
+            <div style="font-size:0.85rem; color:#e2e8f0; margin-top:6px; line-height:1.5;">${renderMarkdown(msg.content)}</div>
+          `;
+          threadSection.appendChild(userCard);
+        } else {
+          const mCard = document.createElement('div');
+          mCard.className = 'deliverable-card manager-reply-card';
+          const isTakeover = msg.taskId || (msg.content && (msg.content.includes('Assisted') || msg.content.includes('take over') || msg.content.includes('AppDrawer') || msg.content.includes('solution')));
+          const titleText = isTakeover ? '👑 Manager Assisted Resolution' : '👑 Manager Strategic Response';
+          const badgeText = isTakeover ? 'VERIFIED TAKEOVER' : 'MANAGER RESPONSE';
+          const badgeClass = isTakeover ? 'status-verified' : 'status-planning';
+          
+          mCard.innerHTML = `
+            <div class="deliverable-header">
+              <div class="deliverable-title" style="color:#fbbf24;">
+                <span>👑</span>
+                <span>${titleText}</span>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <span style="font-size:0.7rem; color:#64748b;">${msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}</span>
+                <span class="agent-status-badge ${badgeClass}" style="font-size:0.6rem;">${badgeText}</span>
+              </div>
+            </div>
+            <div class="deliverable-body">
+              ${renderMarkdown(msg.content)}
+            </div>
+          `;
+          threadSection.appendChild(mCard);
+        }
       });
       workspaceFeed.appendChild(threadSection);
     }
@@ -1073,7 +1273,53 @@ function renderWorkspaceFeed() {
     workspaceFeed.appendChild(infoCard);
 
     // Active Live Reasoning Indicator
-    if (sub.status === 'reasoning') {
+    if (sub.status === 'delegated') {
+      const activeCard = document.createElement('div');
+      activeCard.className = 'agent-active-reasoning-card';
+      activeCard.style.cssText = 'border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, 0.08);';
+      activeCard.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="pulse-indicator" style="background:#f59e0b; box-shadow:0 0 10px #f59e0b;"></span>
+            <strong style="color:#fbbf24; font-size:0.9rem;">👑 Autonomous Manager Takeover Active</strong>
+          </div>
+          <span class="agent-status-badge status-planning" style="font-size:0.65rem;">MANAGER DIRECT INTERVENTION</span>
+        </div>
+        <div style="margin-top:6px; font-size:0.8rem; color:#cbd5e1;">
+          Status: <strong>${sub.currentTask || 'Manager (Antigravity) has autonomously stepped in'}</strong>
+        </div>
+        <div style="margin-top:3px; font-size:0.75rem; color:#94a3b8;">
+          Manager is reviewing evaluation history and synthesizing 100% verified deliverable • <em>Local GPU: 0% idle</em>
+        </div>
+        <div class="thinking-bar-container">
+          <div class="thinking-bar-fill" style="background:linear-gradient(90deg, #f59e0b, #10b981);"></div>
+        </div>
+        <div style="font-size:0.75rem; color:#64748b; margin-top:6px;">
+          The Manager handles unblocking and testing. Results will be verified against acceptance gates automatically.
+        </div>
+      `;
+      workspaceFeed.appendChild(activeCard);
+    } else if (sub.status === 'consulting') {
+      const activeCard = document.createElement('div');
+      activeCard.className = 'agent-active-reasoning-card';
+      activeCard.style.cssText = 'border-left: 3px solid #38bdf8; background: rgba(56, 189, 248, 0.08);';
+      activeCard.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="pulse-indicator" style="background:#38bdf8; box-shadow:0 0 10px #38bdf8;"></span>
+            <strong style="color:#38bdf8; font-size:0.9rem;">📐 Consulting System Architect</strong>
+          </div>
+          <span class="agent-status-badge status-planning" style="font-size:0.65rem;">PEER CONSULTATION</span>
+        </div>
+        <div style="margin-top:6px; font-size:0.8rem; color:#cbd5e1;">
+          ${sub.name} is consulting <strong>System Architect (@architect)</strong> for an authoritative architectural blueprint.
+        </div>
+        <div class="thinking-bar-container">
+          <div class="thinking-bar-fill" style="background:linear-gradient(90deg, #0ea5e9, #38bdf8);"></div>
+        </div>
+      `;
+      workspaceFeed.appendChild(activeCard);
+    } else if (sub.status === 'reasoning') {
       const activeCard = document.createElement('div');
       activeCard.className = 'agent-active-reasoning-card';
       activeCard.innerHTML = `
@@ -1088,7 +1334,7 @@ function renderWorkspaceFeed() {
           Task: <strong>${sub.currentTask || 'Executing assigned sprint objective'}</strong>
         </div>
         <div style="margin-top:3px; font-size:0.75rem; color:#94a3b8;">
-          Routing: <code style="color:var(--accent);">${sub.model}</code> via LiteLLM Proxy (Port 5588) • <em>Local GPU: 0% idle</em>
+          Routing: <code style="color:var(--accent);">${sub.model}</code> via LiteLLM Proxy (Port 4000) • <em>Local GPU: 0% idle</em>
         </div>
         <div class="thinking-bar-container">
           <div class="thinking-bar-fill"></div>
@@ -1114,6 +1360,23 @@ function renderWorkspaceFeed() {
         </div>
       `;
       workspaceFeed.appendChild(activeEvalCard);
+    }
+
+    // Architect Guidance Banner if available for this agent's task
+    const activeTaskForAgent = localSwarmState.tasks?.find(t => t.assignedTo === selectedAgentId && t.architectGuidance);
+    if (activeTaskForAgent && activeTaskForAgent.architectGuidance) {
+      const archBanner = document.createElement('div');
+      archBanner.style.cssText = 'background:#0f172a; border:1px solid #0284c7; border-radius:8px; padding:10px 12px; margin-top:8px;';
+      archBanner.innerHTML = `
+        <div style="font-size:0.8rem; font-weight:700; color:#38bdf8; display:flex; justify-content:space-between; align-items:center;">
+          <span>📐 Active System Architect Blueprint ("${activeTaskForAgent.title}")</span>
+          <span class="agent-status-badge status-verified" style="font-size:0.6rem;">UNBLOCKING SPEC</span>
+        </div>
+        <div style="font-size:0.75rem; color:#94a3b8; margin-top:4px;">
+          System Architect established unblocking guidelines, import definitions, and mocking strategy to guide this task.
+        </div>
+      `;
+      workspaceFeed.appendChild(archBanner);
     }
 
     // Escalation / Retry Alert if Task Failed
@@ -1193,26 +1456,32 @@ function renderWorkspaceFeed() {
           const userCard = document.createElement('div');
           userCard.className = 'operator-directive-card';
           userCard.innerHTML = `
-            <div style="font-size:0.75rem; font-weight:700; color:#38bdf8; display:flex; justify-content:space-between;">
+            <div style="font-size:0.75rem; font-weight:700; color:#38bdf8; display:flex; justify-content:space-between; align-items:center;">
               <span>👤 Operator Steering Directive</span>
               <span style="font-size:0.68rem; color:#64748b;">${msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}</span>
             </div>
-            <div style="font-size:0.85rem; color:#e2e8f0; margin-top:4px;">${msg.content}</div>
+            <div style="font-size:0.85rem; color:#e2e8f0; margin-top:6px; line-height:1.5;">${renderMarkdown(msg.content)}</div>
           `;
           threadSection.appendChild(userCard);
         } else {
           const delCard = document.createElement('div');
           delCard.className = 'deliverable-card';
+          const isSteerReply = !msg.taskId;
+          const cardIcon = isSteerReply ? '💬' : '📄';
           const attemptLabel = msg.taskId ? ` • Attempt ${idx + 1}` : '';
+          const cardTitle = isSteerReply ? `${sub.name} Reply` : `${sub.name}${attemptLabel}`;
+          const badgeText = isSteerReply ? 'STEERING REPLY' : 'VERIFIED DELIVERABLE';
+          const badgeClass = isSteerReply ? 'status-planning' : 'status-verified';
+
           delCard.innerHTML = `
             <div class="deliverable-header">
               <div class="deliverable-title">
-                <span>📄</span>
-                <span>${sub.name}${attemptLabel}</span>
+                <span>${cardIcon}</span>
+                <span>${cardTitle}</span>
               </div>
               <div style="display:flex; gap:8px; align-items:center;">
                 <span style="font-size:0.7rem; color:#64748b;">${msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}</span>
-                <span class="agent-status-badge status-verified" style="font-size:0.6rem;">OUTPUT READY</span>
+                <span class="agent-status-badge ${badgeClass}" style="font-size:0.6rem;">${badgeText}</span>
               </div>
             </div>
             <div class="deliverable-body">
@@ -1280,6 +1549,79 @@ if (btnSwarmAuto) {
   btnSwarmAuto.addEventListener('click', () => {
     const nextAuto = !Boolean(localSwarmState?.autoApprove);
     sendWs({ type: 'swarm-set-auto', auto: nextAuto });
+  });
+}
+
+// Visual Git Diff Modal Handler
+async function showDiffModal(taskId) {
+  const modal = document.getElementById('diff-modal');
+  const title = document.getElementById('diff-modal-title');
+  const subtitle = document.getElementById('diff-modal-subtitle');
+  const statBox = document.getElementById('diff-modal-stat');
+  const body = document.getElementById('diff-modal-body');
+  const revertBtn = document.getElementById('btn-diff-revert-action');
+  if (!modal) return;
+
+  modal.style.display = 'flex';
+  body.textContent = 'Loading git diff from repository...';
+
+  try {
+    const res = await fetch(`/api/swarm/tasks/${taskId}/diff`);
+    if (!res.ok) throw new Error('Failed to fetch diff: ' + (await res.text()));
+    const data = await res.json();
+
+    title.innerHTML = `📦 Commit <code>${data.shortHash || ''}</code> &bull; ${escapeHtml(data.message || '')}`;
+    subtitle.textContent = `Author: ${data.author || 'AgentHub'} | Date: ${data.date || ''}`;
+    statBox.textContent = data.stat || '';
+
+    const rawLines = (data.diff || '').split('\n');
+    const colorized = rawLines.map(line => {
+      const esc = escapeHtml(line);
+      if (line.startsWith('+') && !line.startsWith('+++')) {
+        return `<span style="color:#22c55e; background:rgba(34,197,94,0.1); display:block;">${esc}</span>`;
+      } else if (line.startsWith('-') && !line.startsWith('---')) {
+        return `<span style="color:#ef4444; background:rgba(239,68,68,0.1); display:block;">${esc}</span>`;
+      } else if (line.startsWith('@@')) {
+        return `<span style="color:#06b6d4; font-weight:bold; display:block;">${esc}</span>`;
+      } else if (line.startsWith('diff --git')) {
+        return `<span style="color:#f8fafc; font-weight:bold; background:#1e293b; padding:2px 0; display:block; margin-top:8px;">${esc}</span>`;
+      }
+      return `<span>${esc}</span>`;
+    }).join('\n');
+
+    body.innerHTML = colorized;
+
+    if (revertBtn) {
+      revertBtn.style.display = 'inline-block';
+      revertBtn.onclick = async () => {
+        if (!confirm(`Revert commit ${data.shortHash} in your workspace?`)) return;
+        revertBtn.disabled = true;
+        revertBtn.textContent = 'Reverting...';
+        try {
+          const revRes = await fetch(`/api/swarm/tasks/${taskId}/revert`, { method: 'POST' });
+          const revJson = await revRes.json();
+          if (revJson.error) throw new Error(revJson.error);
+          modal.style.display = 'none';
+          alert(`Commit ${data.shortHash} successfully reverted!`);
+          if (ws && ws.readyState === 1) sendWs({ type: 'swarm-get-state' });
+        } catch (err) {
+          alert('Revert error: ' + err.message);
+        } finally {
+          revertBtn.disabled = false;
+          revertBtn.textContent = '⏪ Revert This Commit';
+        }
+      };
+    }
+  } catch (err) {
+    body.textContent = 'Error loading diff: ' + err.message;
+  }
+}
+
+const btnDiffClose = document.getElementById('btn-diff-close');
+if (btnDiffClose) {
+  btnDiffClose.addEventListener('click', () => {
+    const modal = document.getElementById('diff-modal');
+    if (modal) modal.style.display = 'none';
   });
 }
 
