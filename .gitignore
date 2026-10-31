@@ -1,6 +1,13 @@
-﻿.aider*
+.aider*
 node_modules/
 *.py
 *.bak
 CHAT_UI_SPEC.md
 .env
+swarm_sessions.json
+chats.json
+scratch_*
+*.txt
+run-*.js
+test-*.js
+fix-swarm-engine.js

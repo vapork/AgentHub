@@ -42,9 +42,9 @@ Here is our exact setup for achieving top-tier reasoning without paying for API 
 
 **2. Our Cloud Fallbacks (Generous Free Tiers via LiteLLM):**
 - **Gemini (`gemini/gemini-3.8-flash`)**: Accessed via Google AI Studio for massive context windows at zero cost.
-- **Groq (`groq/llama-3.3-70b-versatile`)**: Used for blistering fast, free LLaMA 3.3 inference.
+- **Groq (`groq/openai/gpt-oss-120b`)**: Used for blistering fast, free inference of the OSS 120B model via Groq.
 - **GLM-4 (`openai/glm-4.7-flash`)**: An excellent, highly capable fallback model available for free.
-- **Nemotron 3 Super (`openrouter/nvidia/nemotron-3-super-120b-a12b:free`)**: Accessed via OpenRouter. *Pro-tip: If you add just $10 to your OpenRouter account balance, you unlock up to 1,000 free requests a day for this massive 120B NVIDIA model!*
+- **Nemotron 3.5 Lightning (`openrouter/nvidia/nemotron-3.5-lightning:free`)**: Accessed via OpenRouter. Lightning fast, 1M context window, and completely free!
 
 ## 🚀 Quick Setup
 

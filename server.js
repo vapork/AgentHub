@@ -16,8 +16,16 @@ const app = express();
 // Global variable to store the OpenAI API key (set via Settings modal)
 let openaiApiKey = process.env.OPENAI_API_KEY || '';
 
-// Serve static frontend files from public/
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static frontend files from public/ with fresh cache controls for mobile
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  }
+}));
 
 // Add OpenAI-compatible proxy endpoint
 app.post('/v1/chat/completions', express.json(), async (req, res) => {
@@ -80,6 +88,7 @@ let currentTunnel = null;
 let globalTunnelUrl = '';
 
 async function startLocaltunnel() {
+  if (process.env.DISABLE_TUNNEL) return;
   if (currentTunnel) {
     try { currentTunnel.close(); } catch(e){}
   }
@@ -174,10 +183,101 @@ app.post('/api/models', express.json(), (req, res) => {
 });
 
 
+// --- SWARM ENGINE CORE ---
+const { SwarmEngine } = require('./swarm/SwarmEngine');
+const swarm = new SwarmEngine();
+
+app.get('/api/swarm/state', (req, res) => res.json(swarm.getState()));
+app.get('/api/swarm/sessions', (req, res) => res.json(swarm.listSessions()));
+app.post('/api/swarm/sessions/resume', express.json(), (req, res) => {
+  try {
+    const state = swarm.resumeSession(req.body.sessionId);
+    res.json({ success: true, state });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post('/api/swarm/sessions/new', express.json(), (req, res) => {
+  try {
+    const state = swarm.createSession(req.body.goal || 'New Swarm Session');
+    res.json({ success: true, state });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post('/api/swarm/goal', express.json(), async (req, res) => {
+  try {
+    const tasks = await swarm.setGoal(req.body.goal);
+    res.json({ success: true, tasks, state: swarm.getState() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post('/api/swarm/steer', express.json(), async (req, res) => {
+  try {
+    const result = await swarm.steer(req.body);
+    res.json({ success: true, result, state: swarm.getState() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- WORKSPACE & GIT PIPELINE API ---
+app.get('/api/swarm/workspace', (req, res) => res.json(swarm.getWorkspaceInfo()));
+app.post('/api/swarm/workspace', express.json(), (req, res) => {
+  try {
+    const info = swarm.setWorkspaceDir(req.body.workspaceDir);
+    res.json({ success: true, info });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post('/api/swarm/tasks/:taskId/apply', express.json(), async (req, res) => {
+  try {
+    const result = await swarm.applyTaskToWorkspace(req.params.taskId);
+    res.json({ success: true, result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post('/api/swarm/tasks/:taskId/aider', express.json(), async (req, res) => {
+  try {
+    const result = await swarm.runAiderOnTask(req.params.taskId, req.body);
+    res.json({ success: true, result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post('/api/swarm/tasks/:taskId/revert', express.json(), (req, res) => {
+  try {
+    const result = swarm.revertTaskCommit(req.params.taskId);
+    res.json({ success: true, result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.get('/api/swarm/tasks/:taskId/diff', (req, res) => {
+  try {
+    const diff = swarm.getTaskDiff(req.params.taskId);
+    res.json(diff);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 const server = http.createServer(app);
 
 // Attach WebSocket server
 const wss = new WebSocketServer({ server });
+
+// Broadcast Swarm events to all connected clients in real time
+swarm.on('swarm-event', ({ event, payload, state }) => {
+  wss.clients.forEach(client => {
+    if (client.readyState === 1) { // 1 = OPEN
+      client.send(JSON.stringify({ type: 'swarm-update', event, payload, state }));
+    }
+  });
+});
 
 wss.on('connection', (ws) => {
   let runningProcess = null;
@@ -187,6 +287,9 @@ wss.on('connection', (ws) => {
       ws.send(JSON.stringify(payload));
     }
   };
+
+  // Push current swarm state on connection
+  send({ type: 'swarm-init', state: swarm.getState() });
 
   const killCurrentProcess = () => {
     if (runningProcess) {
@@ -280,6 +383,70 @@ wss.on('connection', (ws) => {
         } catch (e) {
           send({ type: 'error', message: 'Failed to spawn chat turn: ' + e.message });
         }
+      } else if (msg.type === 'swarm-set-goal') {
+        swarm.setGoal(msg.goal).catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-steer') {
+        swarm.steer({ target: msg.target || 'manager', message: msg.message, author: 'user' })
+          .catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-run') {
+        swarm.runAll().catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-pause') {
+        swarm.pause();
+      } else if (msg.type === 'swarm-execute-task') {
+        swarm.executeTask(msg.taskId).catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-manager-takeover') {
+        swarm.takeoverTask(msg.taskId).catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-consult-architect') {
+        swarm.consultArchitect(msg.taskId, msg.feedback || '').then(() => {
+          return swarm.executeTask(msg.taskId);
+        }).catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-set-auto') {
+        swarm.setAutoApprove(msg.auto);
+      } else if (msg.type === 'swarm-get-state') {
+        send({ type: 'swarm-init', state: swarm.getState() });
+      } else if (msg.type === 'swarm-resume-session') {
+        try {
+          swarm.resumeSession(msg.sessionId);
+        } catch (e) {
+          send({ type: 'error', message: e.message });
+        }
+      } else if (msg.type === 'swarm-new-session') {
+        try {
+          swarm.createSession(msg.goal || 'New Swarm Session');
+        } catch (e) {
+          send({ type: 'error', message: e.message });
+        }
+      } else if (msg.type === 'swarm-list-sessions') {
+        send({ type: 'swarm-sessions-list', sessions: swarm.listSessions() });
+      } else if (msg.type === 'swarm-apply-task') {
+        swarm.applyTaskToWorkspace(msg.taskId)
+          .then(res => send({ type: 'swarm-task-applied', taskId: msg.taskId, result: res }))
+          .catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-aider-task') {
+        swarm.runAiderOnTask(msg.taskId, msg.options || {})
+          .then(res => send({ type: 'swarm-task-applied', taskId: msg.taskId, result: res }))
+          .catch(e => send({ type: 'error', message: e.message }));
+      } else if (msg.type === 'swarm-revert-task') {
+        try {
+          const res = swarm.revertTaskCommit(msg.taskId);
+          send({ type: 'swarm-task-reverted', taskId: msg.taskId, result: res });
+        } catch (e) {
+          send({ type: 'error', message: e.message });
+        }
+      } else if (msg.type === 'swarm-get-diff') {
+        try {
+          const diff = swarm.getTaskDiff(msg.taskId);
+          send({ type: 'swarm-diff-result', taskId: msg.taskId, diff });
+        } catch (e) {
+          send({ type: 'error', message: e.message });
+        }
+      } else if (msg.type === 'swarm-set-workspace') {
+        try {
+          const info = swarm.setWorkspaceDir(msg.workspaceDir);
+          send({ type: 'swarm-workspace-updated', info });
+        } catch (e) {
+          send({ type: 'error', message: e.message });
+        }
       }
     } catch (err) {
       send({ type: 'error', message: `Invalid message format: ${err.message}` });
@@ -315,8 +482,8 @@ watcher
 
 
 // Start HTTP server & localtunnel
-server.listen(PORT, async () => {
-  console.log(`Local server listening on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', async () => {
+  console.log(`Local server listening on http://localhost:${PORT} and http://127.0.0.1:${PORT}`);
 
   try { await startLocaltunnel(); } catch (err) {
     console.error('Failed to initialize localtunnel:', err.message);

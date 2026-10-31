@@ -19,12 +19,12 @@
       --sidebar-border: #2d3748;
       --glass-bg: rgba(26, 27, 35, 0.7);
       --glass-border: rgba(45, 55, 72, 0.3);
-      --chat-bg: #1e1e2e;
-      --chat-user-bg: #89b4fa;
-      --chat-agent-bg: #f5c2e7;
-      --chat-text: #cdd6f4;
-      --chat-user-text: #1e1e2e;
-      --chat-agent-text: #1e1e2e;
+      --chat-bg: #0f1117;
+      --chat-user-bg: #1e3a8a;
+      --chat-agent-bg: #181b24;
+      --chat-text: #e2e8f0;
+      --chat-user-text: #f8fafc;
+      --chat-agent-text: #e2e8f0;
     }
     * {
       box-sizing: border-box;
@@ -142,24 +142,51 @@
       flex-direction: column;
     }
     .chat-bubble {
-      max-width: 80%;
+      max-width: 85%;
       padding: 12px 16px;
-      border-radius: 18px;
+      border-radius: 10px;
       margin: 8px 0;
       word-wrap: break-word;
-      line-height: 1.5;
+      line-height: 1.6;
+      font-size: 0.88rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
     }
     .chat-bubble.user {
-      background: var(--chat-user-bg);
-      color: var(--chat-user-text);
+      background: #1e3a8a;
+      color: #f8fafc;
+      border: 1px solid #3b82f6;
       align-self: flex-end;
-      border-bottom-right-radius: 4px;
+      border-bottom-right-radius: 2px;
     }
     .chat-bubble.agent {
-      background: var(--chat-agent-bg);
-      color: var(--chat-agent-text);
+      background: #181b24;
+      color: #e2e8f0;
+      border: 1px solid #2d3748;
+      border-left: 3px solid var(--accent);
       align-self: flex-start;
-      border-bottom-left-radius: 4px;
+      border-bottom-left-radius: 2px;
+    }
+    .chat-bubble code {
+      background: #0f172a;
+      color: #38bdf8;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 0.82rem;
+      border: 1px solid rgba(56, 189, 248, 0.2);
+    }
+    .chat-bubble pre {
+      background: #090d16;
+      padding: 10px;
+      border-radius: 6px;
+      overflow-x: auto;
+      border: 1px solid #1e293b;
+      margin: 8px 0;
+    }
+    .chat-bubble pre code {
+      background: transparent;
+      border: none;
+      padding: 0;
+      color: #a5f3fc;
     }
     .quick-actions {
       display: flex;
@@ -390,7 +417,463 @@
     @media (max-width: 768px) {
       #btn-sidebar-close { display: block !important; }
     }
-</style>
+
+    /* --- SWARM CONTROL CENTER STYLES --- */
+    #swarm-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      background: var(--bg);
+      padding: 12px;
+      gap: 12px;
+    }
+    .swarm-header-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .swarm-goal-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .swarm-progress-bar-bg {
+      width: 100%;
+      height: 6px;
+      background: #282c37;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .swarm-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #3b82f6, #10b981);
+      transition: width 0.3s ease;
+    }
+    .swarm-controls-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .swarm-btn {
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: #282c37;
+      color: var(--text);
+    }
+    .swarm-btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+    .swarm-btn.warning { background: #eab308; color: black; border-color: #eab308; }
+    .swarm-btn.success { background: #10b981; color: white; border-color: #10b981; }
+
+    .manager-card {
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.08));
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .agent-status-badge {
+      font-size: 0.7rem;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .status-planning { background: #8b5cf6; color: white; }
+    .status-delegating { background: #3b82f6; color: white; }
+    .status-evaluating { background: #eab308; color: black; }
+    .status-idle { background: #4b5563; color: white; }
+    .status-completed, .status-verified { background: #10b981; color: white; }
+    .status-error, .status-failed { background: #ef4444; color: white; }
+    .status-reasoning, .status-in_progress { background: #06b6d4; color: black; }
+
+    .swarm-tabs-container {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      flex-shrink: 0;
+      padding: 6px 2px;
+      position: sticky;
+      top: 0;
+      z-index: 25;
+      background: var(--bg);
+      scrollbar-width: none;
+    }
+    .swarm-tabs-container::-webkit-scrollbar {
+      display: none;
+    }
+    .swarm-tab {
+      flex-shrink: 0;
+      background: #1a1b23;
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      padding: 7px 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      white-space: nowrap;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #94a3b8;
+      transition: all 0.2s;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.25);
+      touch-action: manipulation;
+      user-select: none;
+    }
+    .swarm-tab:hover {
+      background: #282c37;
+      color: white;
+      border-color: #475569;
+    }
+    .swarm-tab.active {
+      background: #1d4ed8;
+      border-color: #3b82f6;
+      color: #ffffff;
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
+    }
+
+    .swarm-workspace-panel {
+      flex: 1;
+      min-height: 200px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .workspace-header {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(0,0,0,0.2);
+    }
+    .workspace-feed {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .task-card {
+      background: #15171e;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .task-card.verified { border-color: rgba(16, 185, 129, 0.4); }
+    .task-card.in_progress { border-color: rgba(59, 130, 246, 0.4); }
+    .task-card.failed { border-color: rgba(239, 68, 68, 0.4); }
+
+    .target-pill-btn {
+      background: #282c37;
+      border: 1px solid var(--border);
+      color: var(--accent);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+    .target-pill-btn:hover { background: #323745; }
+
+    @keyframes pulse-glow {
+      0%, 100% { transform: scale(1); opacity: 0.8; box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7); }
+      50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 0 6px rgba(56, 189, 248, 0); }
+    }
+    @keyframes bar-sweep {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(200%); }
+    }
+    .pulse-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #38bdf8;
+      animation: pulse-glow 1.5s infinite;
+    }
+    .pulse-indicator-eval {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #a855f7;
+      animation: pulse-glow 1.5s infinite;
+    }
+    .agent-active-reasoning-card {
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(59, 130, 246, 0.08));
+      border: 1px solid rgba(6, 182, 212, 0.4);
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .agent-active-eval-card {
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.12), rgba(236, 72, 153, 0.08));
+      border: 1px solid rgba(168, 85, 247, 0.4);
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .agent-active-error-card {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .thinking-bar-container {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 6px;
+      position: relative;
+    }
+    .thinking-bar-fill {
+      width: 40%;
+      height: 100%;
+      background: linear-gradient(90deg, #38bdf8, #818cf8);
+      border-radius: 2px;
+      animation: bar-sweep 1.8s infinite ease-in-out;
+    }
+
+    /* Executive Deliverable Cards & Markdown Styling */
+    .deliverable-card {
+      background: #161821;
+      border: 1px solid #2d3748;
+      border-left: 4px solid var(--accent);
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      color: #f8fafc;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+    }
+    .deliverable-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .deliverable-title {
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .deliverable-body {
+      color: #e2e8f0;
+      font-size: 0.88rem;
+      line-height: 1.6;
+      max-height: 550px;
+      overflow-y: auto;
+      padding-right: 6px;
+    }
+    .deliverable-body h1, .deliverable-body h2, .deliverable-body h3, .deliverable-body h4 {
+      color: #f8fafc;
+      margin-top: 14px;
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+    .deliverable-body h1 { font-size: 1.2rem; border-bottom: 1px solid #334155; padding-bottom: 4px; color: #fff; }
+    .deliverable-body h2 { font-size: 1.05rem; color: #38bdf8; }
+    .deliverable-body h3 { font-size: 0.95rem; color: #93c5fd; }
+    .deliverable-body p { margin-bottom: 8px; color: #cbd5e1; }
+    .deliverable-body ul, .deliverable-body ol { margin-left: 20px; margin-bottom: 10px; color: #cbd5e1; }
+    .deliverable-body li { margin-bottom: 4px; }
+    .deliverable-body table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 0.82rem;
+      background: #0f1117;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid #334155;
+    }
+    .deliverable-body th, .deliverable-body td {
+      padding: 8px 10px;
+      border: 1px solid #334155;
+      text-align: left;
+    }
+    .deliverable-body th {
+      background: #1e293b;
+      color: #38bdf8;
+      font-weight: 700;
+    }
+    .deliverable-body td {
+      color: #e2e8f0;
+    }
+    .deliverable-body tr:nth-child(even) td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .deliverable-body blockquote {
+      border-left: 3px solid #3b82f6;
+      background: rgba(59, 130, 246, 0.08);
+      padding: 8px 12px;
+      margin: 10px 0;
+      border-radius: 0 6px 6px 0;
+      color: #93c5fd;
+      font-style: italic;
+    }
+    .deliverable-body code {
+      background: #0f172a;
+      color: #38bdf8;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.82rem;
+      border: 1px solid rgba(56, 189, 248, 0.2);
+    }
+    .deliverable-body pre {
+      background: #090d16;
+      padding: 12px;
+      border-radius: 6px;
+      overflow-x: auto;
+      border: 1px solid #1e293b;
+      margin: 10px 0;
+    }
+    .deliverable-body pre code {
+      background: transparent;
+      border: none;
+      padding: 0;
+      color: #a5f3fc;
+    }
+    .operator-directive-card {
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 10px;
+      align-self: flex-end;
+      width: 90%;
+    }
+    .manager-reply-card {
+      border-left: 4px solid #f59e0b !important;
+      background: #161823 !important;
+      border: 1px solid #2d3748 !important;
+      border-left-width: 4px !important;
+    }
+    .sprint-summary-card {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(59, 130, 246, 0.08));
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .sidebar-swarm-mode .sidebar-terminal-controls {
+      display: none !important;
+    }
+
+    /* Mobile First Adjustments for Phone Viewing */
+    @media (max-width: 768px) {
+      #swarm-container {
+        padding: 8px;
+        gap: 10px;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
+      }
+      .swarm-header-card, .manager-card {
+        padding: 10px 12px;
+        flex-shrink: 0;
+      }
+      .swarm-controls-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        width: 100%;
+      }
+      .swarm-btn {
+        width: 100%;
+        padding: 8px 6px;
+        font-size: 0.8rem;
+        text-align: center;
+      }
+      .swarm-workspace-panel {
+        flex: none;
+        min-height: auto;
+        overflow: visible;
+      }
+      .workspace-feed {
+        flex: none;
+        overflow: visible;
+        padding: 8px 0;
+        gap: 8px;
+      }
+      .deliverable-card {
+        padding: 12px;
+        margin-bottom: 10px;
+        width: 100%;
+      }
+      .deliverable-body {
+        max-height: none;
+        overflow: visible;
+        padding-right: 0;
+      }
+      .deliverable-body table {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap;
+      }
+      .deliverable-body pre {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .operator-directive-card {
+        width: 100%;
+      }
+      footer {
+        padding: 8px 10px;
+      }
+      #command-input {
+        font-size: 0.95rem;
+      }
+    }
+  </style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
@@ -412,53 +895,51 @@
   <div id="app-container">
     <aside id="sidebar" class="sidebar" style="display:flex; flex-direction:column; overflow:hidden;">
       <div class="sidebar-header" style="justify-content:space-between;">
-        Controls
+        <span style="font-size:0.9rem; font-weight:700;">AgentHub</span>
         <button id="btn-sidebar-close" style="display:none; background:transparent;border:none;color:white;cursor:pointer;font-weight:bold;font-size:1.1rem;">×</button>
       </div>
       
-      <div class="sidebar-content" style="flex:0 0 auto; display:flex; flex-direction:column; gap:8px; overflow-y:visible; padding:12px;">
-        <select id="agent-select" style="padding:8px; background:#111317; color:white; border:1px solid var(--border); border-radius:6px;">
-          <option value="agy">agy</option>
-          <option value="aider">aider</option>
-          <option value="bash">bash</option>
-          <option value="cmd">cmd.exe</option>
-        </select>
-        
-        <div style="display:flex; gap:8px;">
-          <button class="primary" id="btn-spawn" style="flex:1; padding:8px; border-radius:6px; cursor:pointer; background:var(--accent); border:none; color:white; font-weight:bold;">Start Agent</button>
-          <button id="btn-clear" style="padding:8px; border-radius:6px; cursor:pointer; background:#282c37; border:1px solid var(--border); color:white;">Clear</button>
-        </div>
-        
-        <button class="toggle" id="btn-view-toggle" style="padding:8px; border-radius:6px; cursor:pointer; border:1px solid var(--border); width:100%;">Chat View</button>
-        
-        <button class="toggle" id="btn-orchestrator" style="padding:8px; border-radius:6px; cursor:pointer; border:1px solid var(--border); width:100%;">Orchestrator Mode</button>
-        <div id="orchestrator-panel" style="display: none; background: #2a2e3d; padding: 8px; border: 1px solid var(--border); border-radius: 6px; flex-direction: column; gap: 8px; width: 100%;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 0.8rem; font-weight: 600; color: var(--accent);">Subagents</span>
-            <button type="button" id="btn-select-all" style="font-size: 0.7rem; padding: 2px 6px; background: #1a1b23; color: var(--text); border: 1px solid var(--border); border-radius: 4px; cursor: pointer;">Select All</button>
-          </div>
-          <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 6px; cursor: pointer; color: white;">
-            <input type="checkbox" class="subagent-cb" value="aider"> Aider
-          </label>
-          <span style="font-size: 0.7rem; color: #9ca3af; line-height: 1.2;">(Auto-delegates commands)</span>
-        </div>
-        <button id="btn-pause" style="background:#eab308;color:black;border:none;font-weight:bold; padding:8px; border-radius:6px; cursor:pointer; width:100%;">Pause Swarm</button>
-        
-        <div style="display:flex; gap:8px; margin-top:4px;">
-          <button id="btn-qr-modal" style="background:#10b981;color:white;border:none;flex:1;padding:6px;border-radius:4px;cursor:pointer;font-weight:bold;">📱 QR</button>
-          <button id="btn-settings" style="background:#374151;color:white;border:none;flex:1;padding:6px;border-radius:4px;cursor:pointer;font-weight:bold;">Settings</button>
-          <button id="btn-models" style="background:#8b5cf6;color:white;border:none;flex:1;padding:6px;border-radius:4px;cursor:pointer;font-weight:bold;">Models</button>
-        </div>
-      </div>
-      
-      <div class="sidebar-header" style="border-top:1px solid var(--border); justify-content:space-between;">
-        Sessions
-        <button id="btn-new-session" style="background:var(--accent);border:none;color:white;border-radius:4px;padding:2px 8px;cursor:pointer;font-weight:bold;">+</button>
+      <!-- Primary Sessions List -->
+      <div class="sidebar-header" style="justify-content:space-between; background:#212430; border-top:none;">
+        <span style="font-size:0.85rem; color:#e2e8f0;">🎯 Sessions</span>
+        <button id="btn-new-session" style="background:var(--accent);border:none;color:white;border-radius:4px;padding:3px 10px;cursor:pointer;font-weight:bold;font-size:0.75rem;">+ New Goal</button>
       </div>
       <div class="sidebar-content" id="session-list" style="flex:1; overflow-y:auto;"></div>
+
+      <!-- Mode Switcher -->
+      <div style="padding:8px 10px; border-top:1px solid var(--border); background:#181920;">
+        <button class="toggle" id="btn-view-toggle" style="padding:6px; border-radius:6px; cursor:pointer; border:1px solid var(--border); width:100%; font-size:0.8rem;">Swarm View</button>
+      </div>
+
+      <!-- Terminal Console Tools (Clean Collapsible Section) -->
+      <details class="sidebar-terminal-controls" style="border-top:1px solid var(--border); padding:8px 10px; background:#14151b;">
+        <summary style="font-size:0.75rem; color:#94a3b8; cursor:pointer; font-weight:600;">💻 Terminal Console Tools</summary>
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">
+          <select id="agent-select" style="padding:5px; background:#111317; color:white; border:1px solid var(--border); border-radius:4px; font-size:0.75rem;">
+            <option value="agy">agy</option>
+            <option value="aider">aider</option>
+            <option value="bash">bash</option>
+            <option value="cmd">cmd.exe</option>
+          </select>
+          <div style="display:flex; gap:6px;">
+            <button class="primary" id="btn-spawn" style="flex:1; padding:5px; border-radius:4px; font-size:0.75rem;">Spawn CLI</button>
+            <button id="btn-clear" style="padding:5px; border-radius:4px; font-size:0.75rem;">Clear</button>
+          </div>
+          <button class="toggle" id="btn-orchestrator" style="display:none;">Orchestrator Mode</button>
+          <div id="orchestrator-panel" style="display:none;"></div>
+          <button id="btn-pause" style="display:none;">Pause Swarm</button>
+        </div>
+      </details>
       
-      <div class="sidebar-header" style="border-top:1px solid var(--border);">Files Changed</div>
-      <div class="sidebar-content" id="file-list" style="flex:0 0 120px; overflow-y:auto;"></div>
+      <!-- Utility Bar -->
+      <div style="display:flex; gap:6px; padding:8px 10px; border-top:1px solid var(--border); background:#15171e;">
+        <button id="btn-qr-modal" style="background:#10b981;color:white;border:none;flex:1;padding:6px;border-radius:4px;cursor:pointer;font-weight:bold;font-size:0.75rem;">📱 QR</button>
+        <button id="btn-settings" style="background:#374151;color:white;border:none;flex:1;padding:6px;border-radius:4px;cursor:pointer;font-weight:bold;font-size:0.75rem;">Settings</button>
+        <button id="btn-models" style="background:#8b5cf6;color:white;border:none;flex:1;padding:6px;border-radius:4px;cursor:pointer;font-weight:bold;font-size:0.75rem;">Models</button>
+      </div>
+
+      <div class="sidebar-header" style="border-top:1px solid var(--border); font-size:0.75rem; padding:6px 10px;">Files Changed</div>
+      <div class="sidebar-content" id="file-list" style="flex:0 0 80px; overflow-y:auto; font-size:0.7rem;"></div>
     </aside>
     
     <div id="main-col">
@@ -468,17 +949,74 @@
       <div style="display:flex; align-items:center; gap:8px;">
         <button id="btn-sidebar-toggle">☰</button>
         <h1 id="title-btn" style="color: var(--danger); cursor: pointer; user-select: none; transition: color 0.3s;">AgentHub</h1>
-        
       </div>
-      
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:0.75rem; color:#10b981; font-weight:600;">● Cloud Swarm Active</span>
+      </div>
     </div>
   </header>
 
+  <main id="swarm-container">
+    <!-- Active Goal & Overall Progress -->
+    <div class="swarm-header-card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="swarm-goal-title">
+          <span>🎯</span> <span id="swarm-active-goal">No active goal set</span>
+        </div>
+        <span id="swarm-task-counter" class="agent-status-badge status-idle">0/0 Verified</span>
+      </div>
+      <div class="swarm-progress-bar-bg">
+        <div id="swarm-progress-fill" class="swarm-progress-fill"></div>
+      </div>
+      <div class="swarm-controls-row">
+        <button type="button" class="swarm-btn success" id="btn-swarm-run">▶ Run Swarm</button>
+        <button type="button" class="swarm-btn warning" id="btn-swarm-pause">⏸ Pause</button>
+        <button type="button" class="swarm-btn primary" id="btn-swarm-new-goal">🎯 New Goal</button>
+        <button type="button" class="swarm-btn" id="btn-swarm-auto">⚡ Auto-Heal: ON</button>
+      </div>
+    </div>
 
+    <!-- Manager Live Thought Card -->
+    <div class="manager-card" id="manager-status-card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-weight:700; color:white; font-size:0.9rem;">👑 Manager (Antigravity)</span>
+          <span style="font-size:0.75rem; color:#94a3b8; font-weight:500;">Autonomous Director</span>
+        </div>
+        <span id="manager-status-badge" class="agent-status-badge status-idle">Ready</span>
+      </div>
+      <p id="manager-thought-text" style="font-size:0.85rem; color:#cbd5e1; margin-top:4px;">
+        Standing by for project goals or operator instructions.
+      </p>
+      <div id="manager-action-banner" style="display:none; margin-top:6px; padding:6px 10px; background:rgba(59, 130, 246, 0.15); border:1px solid rgba(59, 130, 246, 0.3); border-radius:6px; font-size:0.8rem; align-items:center; justify-content:space-between;">
+        <span id="manager-action-text" style="color:#93c5fd; font-weight:500;"></span>
+        <button id="btn-manager-action" class="swarm-btn primary" style="padding:3px 8px; font-size:0.75rem;"></button>
+      </div>
+    </div>
 
+    <!-- Subagent Interactive Tabs Ribbon -->
+    <div class="swarm-tabs-container" id="swarm-tabs-container">
+      <div class="swarm-tab active" data-agent="manager">👑 Manager</div>
+      <div class="swarm-tab" data-agent="architect">📐 Architect</div>
+      <div class="swarm-tab" data-agent="coder">💻 Master Coder</div>
+      <div class="swarm-tab" data-agent="evaluator">⚖️ Evaluator</div>
+      <div class="swarm-tab" data-agent="tester">🧪 Test Runner</div>
+    </div>
 
-  <main id="terminal-container"></main>
-  <main id="chat-container"></main>
+    <!-- Active Agent Workspace & Feed -->
+    <div class="swarm-workspace-panel" id="swarm-workspace-panel">
+      <div class="workspace-header">
+        <span id="workspace-agent-title" style="font-weight:700; font-size:0.9rem; color:white;">👑 Manager Workspace</span>
+        <span id="workspace-agent-badge" class="agent-status-badge status-idle">IDLE</span>
+      </div>
+      <div class="workspace-feed" id="workspace-feed">
+        <!-- Injected dynamically by app.js based on selected agent -->
+      </div>
+    </div>
+  </main>
+
+  <main id="terminal-container" style="display:none;"></main>
+  <main id="chat-container" style="display:none;"></main>
 
   <section class="quick-actions">
     <button type="button" data-key="\x1b[A">↑</button>
@@ -494,9 +1032,11 @@
   </section>
 
   <footer>
-    <form id="input-form" style="display:flex; width:100%; gap:8px;">
-      <button type="button" class="toggle" id="btn-auto" style="border:1px solid var(--border); padding:10px 14px; border-radius:6px; font-weight:bold; cursor:pointer;">Auto</button>
-      <input type="text" id="command-input" placeholder="Type prompt or response (e.g. y/n)..." autocomplete="off" autocapitalize="none" style="flex:1;" />
+    <form id="input-form" style="display:flex; width:100%; gap:8px; align-items:center;">
+      <button type="button" class="target-pill-btn" id="btn-target-selector" title="Click to switch steering target">
+        <span id="target-pill-label">@Manager 👑</span>
+      </button>
+      <input type="text" id="command-input" placeholder="Instruct @Manager..." autocomplete="off" autocapitalize="none" style="flex:1;" />
       <button type="submit" id="send-btn">Send</button>
     </form>
   </footer>
@@ -528,7 +1068,16 @@
     <div id="settings-modal-content">
       <h2>Settings</h2>
       <label for="api-key-input">OpenAI API Key</label>
-      <input type="password" id="api-key-input" placeholder="sk-..." />
+      <input type="password" id="api-key-input" placeholder="sk-..." style="margin-bottom:12px;" />
+      
+      <label for="settings-workspace-input" style="font-size:0.85rem; color:#cbd5e1; font-weight:600;">Target Project Workspace Path</label>
+      <input type="text" id="settings-workspace-input" placeholder="C:\Users\karan\OneDrive\Desktop\Project\SIMS" style="width:100%; padding:8px; background:#111317; border:1px solid var(--border); border-radius:6px; color:white; font-family:monospace; font-size:0.85rem; margin-top:4px; margin-bottom:12px;" />
+      
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:16px;">
+        <input type="checkbox" id="settings-auto-git-input" checked style="cursor:pointer;" />
+        <label for="settings-auto-git-input" style="font-size:0.8rem; color:#cbd5e1; cursor:pointer;">Auto-commit verified tasks to Git with descriptive tags</label>
+      </div>
+
       <div class="modal-actions">
         <button type="button" id="btn-settings-cancel">Cancel</button>
         <button type="button" id="btn-settings-save">Save</button>
@@ -536,7 +1085,6 @@
     </div>
   </div>
 
-  
   <!-- QR Modal -->
   <div id="qr-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);justify-content:center;align-items:center;z-index:2000;">
     <div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:12px;padding:24px;width:90%;max-width:350px;backdrop-filter:blur(10px);text-align:center;">
@@ -550,10 +1098,40 @@
         <button id="btn-qr-restart" style="background:#eab308;color:black;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:bold;">Restart Tunnel</button>
         <button id="btn-qr-close" style="background:#374151;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:bold;">Close</button>
       </div>
-
     </div>
   </div>
 
-  <script src="/app.js"></script>
+  <!-- New Goal Modal -->
+  <div id="goal-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);justify-content:center;align-items:center;z-index:2000;">
+    <div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:12px;padding:24px;width:90%;max-width:440px;backdrop-filter:blur(10px);">
+      <h2 style="margin-bottom:12px;font-size:1.2rem;color:white;">🎯 Set Swarm Master Goal</h2>
+      <p style="color:#94a3b8;font-size:0.85rem;margin-bottom:12px;">The Manager Agent will decompose this goal into an execution graph and orchestrate subagents.</p>
+      <textarea id="goal-input-text" rows="4" placeholder="e.g. Implement Inter-Store Stock Transfer feature with validation and unit tests..." style="width:100%;padding:10px;background:#111317;border:1px solid var(--border);border-radius:8px;color:white;font-family:inherit;font-size:0.9rem;resize:vertical;margin-bottom:16px;outline:none;"></textarea>
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button id="btn-goal-cancel" class="swarm-btn">Cancel</button>
+        <button id="btn-goal-submit" class="swarm-btn primary">Decompose & Launch Swarm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Visual Git Diff Modal -->
+  <div id="diff-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);justify-content:center;align-items:center;z-index:3000;backdrop-filter:blur(6px);">
+    <div style="background:#13151b;border:1px solid #334155;border-radius:12px;width:94%;max-width:920px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,0.85);">
+      <div style="padding:14px 18px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center;background:#1e222d;">
+        <div>
+          <h3 id="diff-modal-title" style="margin:0;font-size:1.05rem;color:#f8fafc;display:flex;align-items:center;gap:8px;">📦 Git Commit Diff</h3>
+          <span id="diff-modal-subtitle" style="font-size:0.75rem;color:#94a3b8;font-family:monospace;"></span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="btn-diff-revert-action" class="swarm-btn danger" style="padding:4px 10px;font-size:0.75rem;display:none;">⏪ Revert This Commit</button>
+          <button id="btn-diff-close" style="background:#374151;border:none;color:#cbd5e1;padding:4px 10px;border-radius:4px;cursor:pointer;font-weight:bold;">Close</button>
+        </div>
+      </div>
+      <div id="diff-modal-stat" style="padding:8px 18px;background:#181b24;border-bottom:1px solid #282c37;font-family:monospace;font-size:0.75rem;color:#38bdf8;"></div>
+      <div id="diff-modal-body" style="padding:16px 18px;overflow-y:auto;flex:1;font-family:Consolas, 'Courier New', monospace;font-size:0.8rem;line-height:1.45;white-space:pre-wrap;background:#0b0d13;color:#cbd5e1;"></div>
+    </div>
+  </div>
+
+  <script src="/app.js?v=2.2"></script>
 </body>
 </html>
