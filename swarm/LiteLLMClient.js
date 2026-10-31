@@ -4,6 +4,21 @@
  * or cloud OpenAI-compatible fallbacks, keeping local RTX 4060 GPU 100% idle.
  */
 
+const fs = require('fs');
+const path = require('path');
+
+function getOpenRouterKey() {
+  if (process.env.OPENROUTER_API_KEY) return process.env.OPENROUTER_API_KEY;
+  try {
+    const envPath = path.resolve(__dirname, '..', '.env');
+    if (fs.existsSync(envPath)) {
+      const match = fs.readFileSync(envPath, 'utf8').match(/OPENROUTER_API_KEY\s*=\s*(.+)/);
+      if (match) return match[1].trim().replace(/^['"]|['"]$/g, '');
+    }
+  } catch {}
+  return '';
+}
+
 const FALLBACK_CHAINS = {
   'swarm-master': ['deepseek-flash', 'swarm-architect', 'agent-db-engineer', 'agent-code-monkey'],
   'agent-code-monkey': ['deepseek-flash', 'swarm-master', 'agent-db-engineer'],
@@ -70,9 +85,9 @@ class LiteLLMClient {
     console.warn(`[LiteLLMClient] Local proxy failed (${lastError?.message}). Falling back to direct OpenRouter DeepSeek Flash upstream...`);
     try {
       const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
-      const openRouterKey = process.env.OPENROUTER_API_KEY || '';
+      const openRouterKey = getOpenRouterKey();
       if (!openRouterKey) {
-        throw new Error('OPENROUTER_API_KEY is not configured for direct fallback.');
+        throw new Error('OPENROUTER_API_KEY is not configured in environment or .env file.');
       }
       const response = await fetch(openRouterUrl, {
         method: 'POST',
@@ -128,5 +143,3 @@ class LiteLLMClient {
 }
 
 module.exports = { LiteLLMClient };
-
-
